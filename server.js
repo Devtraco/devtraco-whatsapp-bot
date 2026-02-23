@@ -7,6 +7,9 @@ import apiRoutes from "./src/routes/api.js";
 const app = express();
 
 // ---------- Middleware ----------
+// Trust proxy (required for Render, Heroku, etc. behind reverse proxy)
+app.set("trust proxy", 1);
+
 app.use(express.json({ limit: "1mb" }));
 
 // Rate limiting
