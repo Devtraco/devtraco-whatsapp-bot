@@ -43,6 +43,13 @@ ESCALATION:
 - If the customer requests a human agent or the question requires human help, include:
   [ESCALATE]reason here[/ESCALATE]
 
+VIEWING SCHEDULING:
+- When a customer wants to schedule a viewing/visit, collect: which property, preferred date, preferred time, and their name.
+- Once you have enough info (at least the property and date), include at the END of your response:
+  [SCHEDULE_VIEWING]{"propertyId": "...", "propertyName": "...", "preferredDate": "...", "preferredTime": "...", "name": "..."}[/SCHEDULE_VIEWING]
+- Use these property IDs: arlo-cantonments, the-address, the-edge, nova, acasia-apartments, avant-garde, henriettas-residences, forte-residences, the-pelican, the-niiyo, palmers-place, acasia-townhomes
+- This block will be stripped before sending to the user.
+
 FORMAT:
 - Keep responses under 300 words
 - Use short paragraphs
@@ -97,6 +104,7 @@ function parseAIResponse(raw) {
   let text = raw;
   let leadData = null;
   let escalate = null;
+  let scheduleViewing = null;
 
   // Extract lead data
   const leadMatch = raw.match(/\[LEAD_DATA\](.*?)\[\/LEAD_DATA\]/s);
@@ -116,7 +124,18 @@ function parseAIResponse(raw) {
     text = text.replace(escMatch[0], "").trim();
   }
 
-  return { text, leadData, escalate };
+  // Extract viewing schedule
+  const viewMatch = raw.match(/\[SCHEDULE_VIEWING\](.*?)\[\/SCHEDULE_VIEWING\]/s);
+  if (viewMatch) {
+    try {
+      scheduleViewing = JSON.parse(viewMatch[1]);
+      text = text.replace(viewMatch[0], "").trim();
+    } catch {
+      console.warn("Failed to parse viewing schedule from AI response");
+    }
+  }
+
+  return { text, leadData, escalate, scheduleViewing };
 }
 
 /**

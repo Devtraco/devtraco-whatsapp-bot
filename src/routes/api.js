@@ -6,6 +6,7 @@ import {
 } from "../services/session.js";
 import { formatLeadReport, getLeadTier } from "../services/leadCapture.js";
 import { getAllProperties } from "../data/properties.js";
+import { getAllViewings, getPendingViewingCount, updateViewingStatus } from "../services/viewingScheduler.js";
 
 const router = express.Router();
 
@@ -43,6 +44,7 @@ router.get("/stats", (req, res) => {
     totalMessages,
     escalated,
     properties: getAllProperties().length,
+    pendingViewings: getPendingViewingCount(),
   });
 });
 
@@ -93,6 +95,34 @@ router.get("/conversations/:userId", (req, res) => {
  */
 router.get("/properties", (req, res) => {
   res.json({ properties: getAllProperties() });
+});
+
+/**
+ * GET /api/viewings — List all viewing appointments
+ */
+router.get("/viewings", (req, res) => {
+  const viewings = getAllViewings();
+  res.json({
+    total: viewings.length,
+    pending: viewings.filter(v => v.status === "PENDING").length,
+    confirmed: viewings.filter(v => v.status === "CONFIRMED").length,
+    viewings,
+  });
+});
+
+/**
+ * PATCH /api/viewings/:id — Update viewing status (confirm/cancel)
+ */
+router.patch("/viewings/:id", (req, res) => {
+  const { status } = req.body;
+  if (!["CONFIRMED", "CANCELLED", "COMPLETED"].includes(status)) {
+    return res.status(400).json({ error: "Invalid status. Use: CONFIRMED, CANCELLED, or COMPLETED" });
+  }
+  const viewing = updateViewingStatus(req.params.id, status);
+  if (!viewing) {
+    return res.status(404).json({ error: "Viewing not found" });
+  }
+  res.json(viewing);
 });
 
 export default router;

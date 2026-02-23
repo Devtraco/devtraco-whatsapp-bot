@@ -5,9 +5,11 @@ import {
   sendTextMessage,
   sendButtonMessage,
   sendListMessage,
+  sendImageMessage,
   markAsRead,
 } from "../services/whatsapp.js";
-import { getAllProperties, formatPropertyCard } from "../data/properties.js";
+import { getAllProperties, getPropertyById, formatPropertyCard } from "../data/properties.js";
+import { createViewing, formatViewingConfirmation, getUserViewings } from "../services/viewingScheduler.js";
 import config from "../config/index.js";
 
 /**
@@ -51,15 +53,86 @@ export async function handleIncomingMessage(messagePayload) {
     return;
   }
 
+  if (command === "/viewings" || command === "my viewings") {
+    await sendUserViewings(from);
+    return;
+  }
+
+  // --- Handle interactive button/list replies ---
+  if (type === "interactive") {
+    const interactiveId = interactive?.button_reply?.id || interactive?.list_reply?.id || "";
+
+    // GDPR consent responses
+    if (interactiveId === "consent_accept") {
+      setConsent(from, true);
+      updateState(from, "ACTIVE");
+      await sendTextMessage(from, "Thank you! 🙏 I'm happy to assist you. How can I help you find your perfect home today?");
+      setTimeout(() => sendMainMenu(from), 1500);
+      return;
+    }
+    if (interactiveId === "consent_decline") {
+      await sendTextMessage(from, `No problem! If you change your mind, just send us a message anytime.\n\nYou can also reach us directly:\n📞 ${config.company.cellPhone}\n📧 ${config.company.email}`);
+      return;
+    }
+
+    // Property detail view from list selection
+    if (interactiveId.startsWith("property_")) {
+      const propertyId = interactiveId.replace("property_", "");
+      await sendPropertyDetail(from, propertyId);
+      // Also feed it to the AI so conversation stays contextual
+      addMessage(from, "user", `Tell me about ${interactive?.list_reply?.title || propertyId}`);
+      const aiResult = await generateAIResponseFull(from, session);
+      if (aiResult.leadData) captureLead(from, aiResult.leadData);
+      await sendTextMessage(from, aiResult.text);
+      return;
+    }
+
+    // Schedule viewing button from property detail
+    if (interactiveId.startsWith("schedule_")) {
+      const propertyId = interactiveId.replace("schedule_", "");
+      const property = getPropertyById(propertyId);
+      const propertyName = property?.name || "a property";
+      addMessage(from, "user", `I'd like to schedule a viewing for ${propertyName}`);
+      const aiResult = await generateAIResponseFull(from, session);
+      if (aiResult.leadData) captureLead(from, aiResult.leadData);
+      await sendTextMessage(from, aiResult.text);
+      if (aiResult.scheduleViewing) {
+        await handleViewingSchedule(from, aiResult.scheduleViewing);
+      }
+      return;
+    }
+
+    // "View Properties" button
+    if (interactiveId === "view_properties") {
+      await sendPropertyList(from);
+      return;
+    }
+
+    // "Schedule Visit" button
+    if (interactiveId === "schedule_viewing") {
+      addMessage(from, "user", "I'd like to schedule a property viewing");
+      const aiResult = await generateAIResponseFull(from, session);
+      if (aiResult.leadData) captureLead(from, aiResult.leadData);
+      await sendTextMessage(from, aiResult.text);
+      return;
+    }
+
+    // "Speak to Agent" button
+    if (interactiveId === "speak_agent") {
+      await handleEscalation(from, "Customer requested human agent via menu");
+      return;
+    }
+  }
+
   // --- GDPR Consent check (first interaction) ---
   if (!session.consentGiven && session.history.length === 0) {
-    setConsent(from, true); // implicit consent by messaging the business
-    addMessage(from, "user", userText);
-    const greeting = await generateAIResponse(from, session);
-    await sendTextMessage(from, greeting);
+    await sendConsentRequest(from);
+    return;
+  }
 
-    // Send welcome menu after first greeting
-    setTimeout(() => sendMainMenu(from), 1500);
+  // If consent was asked but not yet given, remind them
+  if (!session.consentGiven) {
+    await sendConsentRequest(from);
     return;
   }
 
@@ -74,6 +147,11 @@ export async function handleIncomingMessage(messagePayload) {
 
   // Send the response
   await sendTextMessage(from, aiResult.text);
+
+  // Handle viewing schedule from AI
+  if (aiResult.scheduleViewing) {
+    await handleViewingSchedule(from, aiResult.scheduleViewing);
+  }
 
   // Auto-escalate hot leads
   const updatedSession = getSession(from);
@@ -112,6 +190,104 @@ async function generateAIResponseFull(from, session) {
   const result = await generateResponse(session.history);
   addMessage(from, "assistant", result.text);
   return result;
+}
+
+/**
+ * Send GDPR/data consent request
+ */
+async function sendConsentRequest(to) {
+  await sendTextMessage(
+    to,
+    `👋 *Welcome to Devtraco Plus!*\n\nI'm your AI property assistant. Before we begin, I'd like to let you know:\n\n📋 We collect basic information (name, email, preferences) to provide personalized property recommendations and improve your experience.\n\n🔒 Your data is secure and will only be used for property-related communication. You can request data deletion anytime.\n\nDo you consent to proceed?`
+  );
+
+  await sendButtonMessage(
+    to,
+    "Please confirm to continue:",
+    [
+      { id: "consent_accept", title: "✅ Yes, I agree" },
+      { id: "consent_decline", title: "❌ No, thanks" },
+    ],
+    "Data Privacy",
+    "We respect your privacy"
+  );
+}
+
+/**
+ * Send detailed property view with image
+ */
+async function sendPropertyDetail(to, propertyId) {
+  const property = getPropertyById(propertyId);
+  if (!property) return;
+
+  // Send image if available
+  if (property.images && property.images.length > 0) {
+    try {
+      await sendImageMessage(
+        to,
+        property.images[0],
+        `🏠 ${property.name} — ${property.location}`
+      );
+    } catch (err) {
+      console.warn(`[Property] Failed to send image for ${propertyId}:`, err.message);
+    }
+  }
+
+  // Send property details
+  const card = formatPropertyCard(property);
+  await sendTextMessage(to, card);
+
+  // Send action buttons
+  await sendButtonMessage(
+    to,
+    `Interested in *${property.name}*?`,
+    [
+      { id: `schedule_${property.id}`, title: "📅 Schedule Visit" },
+      { id: "view_properties", title: "🏠 More Properties" },
+      { id: "speak_agent", title: "👤 Speak to Agent" },
+    ],
+    property.name
+  );
+}
+
+/**
+ * Handle viewing schedule from AI response
+ */
+async function handleViewingSchedule(to, scheduleData) {
+  const session = getSession(to);
+  const viewing = createViewing({
+    userId: to,
+    propertyId: scheduleData.propertyId || "unknown",
+    propertyName: scheduleData.propertyName || "Not specified",
+    preferredDate: scheduleData.preferredDate || "To be confirmed",
+    preferredTime: scheduleData.preferredTime || "To be confirmed",
+    name: scheduleData.name || session.leadData.name || "Not provided",
+    phone: to,
+    email: session.leadData.email || "Not provided",
+    notes: scheduleData.notes || "",
+  });
+
+  // Send confirmation
+  setTimeout(async () => {
+    await sendTextMessage(to, formatViewingConfirmation(viewing));
+  }, 1500);
+}
+
+/**
+ * Send user's viewing history
+ */
+async function sendUserViewings(to) {
+  const viewings = getUserViewings(to);
+  if (viewings.length === 0) {
+    await sendTextMessage(to, "📅 You don't have any scheduled viewings yet. Would you like to schedule one?");
+    return;
+  }
+
+  const lines = viewings.map((v, i) => 
+    `${i + 1}. *${v.propertyName}*\n   📋 Ref: ${v.id}\n   📆 ${v.preferredDate} at ${v.preferredTime}\n   📌 Status: ${v.status}`
+  );
+
+  await sendTextMessage(to, `📅 *Your Scheduled Viewings*\n\n${lines.join("\n\n")}`);
 }
 
 /**
