@@ -14,8 +14,10 @@ ROLE & PERSONALITY:
 COMPANY INFO:
 - Company: ${config.company.name} — ${config.company.description}
 - Website: ${config.company.website}
-- Phone: ${config.company.phone}
+- Office Phone: ${config.company.phone}
+- Cell: ${config.company.cellPhone}
 - Email: ${config.company.email}
+- Office: ${config.company.address}
 
 PROPERTIES YOU KNOW ABOUT:
 ${getPropertyContext()}
@@ -81,7 +83,7 @@ export async function generateResponse(conversationHistory) {
 
     return {
       text: "I'm having a brief technical issue. Please try again shortly, or contact us directly at " +
-        `${config.company.phone}. 📞`,
+        `${config.company.phone} or ${config.company.email}. 📞`,
       leadData: null,
       escalate: null,
     };
@@ -122,34 +124,78 @@ function parseAIResponse(raw) {
  */
 function getPropertyContext() {
   return `
-1. *The Acacia* — East Legon, Accra
-   - Type: Luxury Apartments (1, 2 & 3 bedroom)
-   - Price: Starting from $120,000
-   - Amenities: Pool, gym, 24/7 security, parking, landscaped gardens
-   - Status: Ready for occupation
+1. *Arlo Cantonments* — Cantonments, Accra
+   - Type: Apartments (Studio, 1, 2 & 3 bedroom)
+   - Price: Starting from $83,000
+   - Status: Now Selling
+   - Link: https://arlo.devtracoplus.com
 
-2. *One Elm* — Airport Residential, Accra
-   - Type: Premium Apartments (2 & 3 bedroom)
-   - Price: Starting from $250,000
-   - Amenities: Rooftop terrace, concierge, smart home features
-   - Status: Under construction — Q3 2026 completion
+2. *The Address* — Roman Ridge, Accra
+   - Type: Apartments (Studio, 1, 2, 3 bedroom & Penthouses)
+   - Price: Starting from $89,000
+   - Status: Now Selling
+   - Link: https://theaddress.devtracoplus.com
 
-3. *Palmview Estates* — Tema Community 25
-   - Type: Townhouses (3 & 4 bedroom)
-   - Price: Starting from $180,000
-   - Amenities: Gated community, playground, club house
-   - Status: Phase 1 sold out, Phase 2 now selling
+3. *The Edge* — Accra
+   - Type: Apartments (Studio, 1, 2 & 3 bedroom)
+   - Price: Starting from $99,000
+   - Status: Now Selling
+   - Mixed-use development for urban living
 
-4. *The Lancaster* — Ridge, Accra
-   - Type: Office & Commercial Spaces
-   - Price: Starting from $350,000
-   - Amenities: Serviced offices, conference rooms, food court
-   - Status: Available
+4. *NoVA* — Accra
+   - Type: Apartments (Studio, 1, 2 & 3 bedroom)
+   - Price: Starting from $141,347
+   - Status: Now Selling
+   - Mixed-use ultra modern urban lifestyle development
+   - Link: https://nova.devtracoplus.com
 
-5. *Devtraco Villas* — East Legon Hills
-   - Type: Detached Villas (4 & 5 bedroom)
-   - Price: Starting from $400,000
-   - Amenities: Private garden, staff quarters, home automation
-   - Status: 8 units remaining
+5. *Acasia Apartments* — Accra
+   - Type: Apartments (1, 2 & 3 bedroom)
+   - Price: Starting from $145,000
+   - Status: Now Selling
+
+6. *Avant Garde* — Accra
+   - Type: Apartments (1, 2 & 3 bedroom)
+   - Price: Starting from $170,000
+   - Status: Now Selling
+   - Exceptionally high standard, uncompromising quality
+
+7. *Henrietta's Residences* — Cantonments, Accra
+   - Type: Apartments (1, 2 & 3 bedroom)
+   - Price: Starting from $245,000
+   - Status: Now Selling
+   - Strategic proximity to notable landmarks
+
+8. *Forte Residences* — Accra / Tema
+   - Type: Townhouses (2 to 4.5 bedroom)
+   - Price: Starting from $270,720
+   - Status: Now Selling
+   - Luxury gated community living
+   - Link: https://forte.devtracoplus.com
+
+9. *The Pelican Hotel Apartments* — Accra
+   - Type: Hotel Apartments (Investment property)
+   - Price: Starting from $274,125
+   - Status: Now Selling
+   - Proven hotel investment model with managed returns
+   - Link: https://pelican.devtracoplus.com
+
+10. *The Niiyo* — Dzorwulu, Accra
+    - Type: Apartments (1, 2 & 3 bedroom)
+    - Price: Starting from $275,000
+    - Status: Now Selling
+    - Residential oasis, contemporary living
+
+11. *Palmer's Place* — Accra
+    - Type: Townhomes (exclusive, only 7 units)
+    - Price: Starting from $760,000
+    - Status: Limited Availability
+    - First class workmanship
+
+12. *Acasia Townhomes* — Accra
+    - Type: Townhomes (3, 4 & 5 bedroom)
+    - Price: Starting from $850,000
+    - Status: Limited Availability
+    - Iconic luxury for discerning homeowners
   `;
 }

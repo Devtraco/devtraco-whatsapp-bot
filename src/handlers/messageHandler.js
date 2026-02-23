@@ -163,7 +163,7 @@ async function handleEscalation(to, reason) {
   updateState(to, "ESCALATED");
   await sendTextMessage(
     to,
-    `👤 *Connecting you with a team member*\n\nI'm transferring you to one of our property consultants who'll be able to help you further.\n\n📞 You can also reach us directly:\n• Phone: ${config.company.phone}\n• Email: ${config.company.email}\n\nA team member will respond shortly. Thank you for your patience! 🙏`
+    `👤 *Connecting you with a team member*\n\nI'm transferring you to one of our property consultants who'll be able to help you further.\n\n📞 You can also reach us directly:\n• Office: ${config.company.phone}\n• Cell: ${config.company.cellPhone}\n• Email: ${config.company.email}\n\nA team member will respond shortly. Thank you for your patience! 🙏`
   );
   console.log(`[Escalation] ${to} — Reason: ${reason}`);
 }

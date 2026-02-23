@@ -44,12 +44,14 @@ const config = {
 
   // Company info for the AI system prompt
   company: {
-    name: "Devtraco",
+    name: "Devtraco Plus",
     industry: "Real Estate Development",
-    description: "Devtraco is a leading real estate development company in Ghana, specializing in premium residential and commercial properties.",
-    website: "https://devtraco.com",
-    phone: "+233 30 222 3441",
-    email: "info@devtraco.com",
+    description: "Devtraco Plus is a premier real estate developer in Ghana, delivering a new generation of signature homes — luxury apartments, townhouses, and hotel investment properties across Accra's most prestigious neighborhoods.",
+    website: "https://devtracoplus.com",
+    phone: "+233 (0) 302 798 692",
+    cellPhone: "+233 (0) 270 000 004",
+    email: "info@devtracoplus.com",
+    address: "No. 8B, Sir Arku Korsah Road, Airport Residential Area, Accra, Ghana",
   },
 };
 
