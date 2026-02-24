@@ -20,14 +20,14 @@ const config = {
   openai: {
     apiKey: process.env.OPENAI_API_KEY,
     model: "gpt-4o-mini",
-    maxTokens: 1024,
-    temperature: 0.7,
+    maxTokens: 500,     // bot replies are short — keeps generation fast
+    temperature: 0.5,   // slightly lower for faster, more focused replies
   },
 
   // Session
   session: {
     ttlMinutes: 30, // conversation context window
-    maxHistory: 20, // max messages kept in context
+    maxHistory: 10, // max messages kept in context (fewer = faster AI)
   },
 
   // MongoDB

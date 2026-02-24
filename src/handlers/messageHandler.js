@@ -141,36 +141,35 @@ export async function handleIncomingMessage(messagePayload) {
   }
 
   // --- AI conversation pipeline ---
+  const pipelineStart = Date.now();
   await addMessage(from, "user", userText);
   const aiResult = await generateAIResponseFull(from, session);
+  const aiDone = Date.now();
 
-  // Handle lead data capture from AI tags
-  if (aiResult.leadData) {
-    await captureLead(from, aiResult.leadData);
-  }
+  // --- Post-AI processing (non-blocking where possible) ---
 
-  // Fallback lead extraction: scan user text + AI response for lead info
-  // when the AI didn't include a [LEAD_DATA] tag
-  if (!aiResult.leadData) {
-    const fallbackLead = extractLeadFromConversation(userText, aiResult.text, session);
-    if (fallbackLead && Object.keys(fallbackLead).length > 0) {
-      await captureLead(from, fallbackLead);
-      console.log(`[Fallback] Extracted lead data from conversation:`, JSON.stringify(fallbackLead));
+  // Lead capture runs in background — doesn't block the reply
+  const leadWork = (async () => {
+    if (aiResult.leadData) {
+      await captureLead(from, aiResult.leadData);
+    } else {
+      const fallbackLead = extractLeadFromConversation(userText, aiResult.text, session);
+      if (fallbackLead && Object.keys(fallbackLead).length > 0) {
+        await captureLead(from, fallbackLead);
+        console.log(`[Fallback] Extracted lead data from conversation:`, JSON.stringify(fallbackLead));
+      }
     }
-  }
-
-  // Also capture lead data from viewing schedule (name is always provided)
-  if (aiResult.scheduleViewing) {
-    const viewingLead = {};
-    if (aiResult.scheduleViewing.name) viewingLead.name = aiResult.scheduleViewing.name;
-    if (aiResult.scheduleViewing.propertyName) viewingLead.propertyInterest = aiResult.scheduleViewing.propertyName;
-    if (Object.keys(viewingLead).length > 0) {
-      await captureLead(from, viewingLead);
-      console.log(`[Lead] Captured from viewing schedule:`, JSON.stringify(viewingLead));
+    if (aiResult.scheduleViewing) {
+      const viewingLead = {};
+      if (aiResult.scheduleViewing.name) viewingLead.name = aiResult.scheduleViewing.name;
+      if (aiResult.scheduleViewing.propertyName) viewingLead.propertyInterest = aiResult.scheduleViewing.propertyName;
+      if (Object.keys(viewingLead).length > 0) {
+        await captureLead(from, viewingLead);
+      }
     }
-  }
+  })();
 
-  // Fallback: if AI forgot the SHOW_PROPERTY tag, detect property name in response
+  // Fallback property detection (sync — fast, no DB call)
   if (!aiResult.showProperty) {
     const detected = await detectPropertyInText(aiResult.text);
     if (detected) {
@@ -179,26 +178,25 @@ export async function handleIncomingMessage(messagePayload) {
     }
   }
 
-  // Strip "I can't show/display images" sentences from AI text
+  // Strip refusal text
   aiResult.text = cleanImageRefusals(aiResult.text);
 
-  // Log the conversation
   console.log(`[Chat] ${from} → ${userText}`);
   console.log(`[Chat] Bot → ${aiResult.text.slice(0, 150)}...`);
 
-  // If AI referenced a specific property, send its images/videos first
-  // BUT skip media when the AI is scheduling a viewing (user already knows the property)
+  // Send media + text reply (this is the user-facing latency)
   const skipMedia = !!aiResult.scheduleViewing;
 
   if (aiResult.showProperty && !skipMedia) {
     await sendPropertyImages(from, aiResult.showProperty);
   }
 
-  // Send the response
   await sendTextMessage(from, aiResult.text);
+  const replySent = Date.now();
+  console.log(`[Perf] Pipeline: AI=${aiDone - pipelineStart}ms | Reply=${replySent - aiDone}ms | Total=${replySent - pipelineStart}ms`);
 
-  // If AI referenced a specific property, send action buttons after the text
-  // (skip when scheduling — the flow is already complete)
+  // --- Post-reply work (user already has the message) ---
+
   if (aiResult.showProperty && !skipMedia) {
     const prop = await getPropertyById(aiResult.showProperty);
     if (prop) {
@@ -215,10 +213,12 @@ export async function handleIncomingMessage(messagePayload) {
     }
   }
 
-  // Handle viewing schedule from AI
   if (aiResult.scheduleViewing) {
     await handleViewingSchedule(from, aiResult.scheduleViewing);
   }
+
+  // Wait for background lead work to finish
+  await leadWork;
 
   // Auto-escalate hot leads
   const updatedSession = await getSession(from);
