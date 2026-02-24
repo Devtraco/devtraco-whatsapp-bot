@@ -23,7 +23,7 @@ export async function handleIncomingMessage(messagePayload) {
   // Mark as read immediately for good UX
   markAsRead(messageId);
 
-  const session = getSession(from);
+  const session = await getSession(from);
   const userText = extractUserText(type, text, interactive);
 
   if (!userText) return; // unsupported message type
@@ -32,7 +32,7 @@ export async function handleIncomingMessage(messagePayload) {
   const command = userText.trim().toLowerCase();
 
   if (command === "/reset" || command === "start over") {
-    updateState(from, "GREETING");
+    await updateState(from, "GREETING");
     session.history = [];
     await sendTextMessage(from, "🔄 Conversation reset! How can I help you today?");
     return;
@@ -64,8 +64,8 @@ export async function handleIncomingMessage(messagePayload) {
 
     // GDPR consent responses
     if (interactiveId === "consent_accept") {
-      setConsent(from, true);
-      updateState(from, "ACTIVE");
+      await setConsent(from, true);
+      await updateState(from, "ACTIVE");
       await sendTextMessage(from, "Thank you! 🙏 I'm happy to assist you. How can I help you find your perfect home today?");
       setTimeout(() => sendMainMenu(from), 1500);
       return;
@@ -80,9 +80,9 @@ export async function handleIncomingMessage(messagePayload) {
       const propertyId = interactiveId.replace("property_", "");
       await sendPropertyDetail(from, propertyId);
       // Also feed it to the AI so conversation stays contextual
-      addMessage(from, "user", `Tell me about ${interactive?.list_reply?.title || propertyId}`);
+      await addMessage(from, "user", `Tell me about ${interactive?.list_reply?.title || propertyId}`);
       const aiResult = await generateAIResponseFull(from, session);
-      if (aiResult.leadData) captureLead(from, aiResult.leadData);
+      if (aiResult.leadData) await captureLead(from, aiResult.leadData);
       await sendTextMessage(from, aiResult.text);
       return;
     }
@@ -90,11 +90,11 @@ export async function handleIncomingMessage(messagePayload) {
     // Schedule viewing button from property detail
     if (interactiveId.startsWith("schedule_")) {
       const propertyId = interactiveId.replace("schedule_", "");
-      const property = getPropertyById(propertyId);
+      const property = await getPropertyById(propertyId);
       const propertyName = property?.name || "a property";
-      addMessage(from, "user", `I'd like to schedule a viewing for ${propertyName}`);
+      await addMessage(from, "user", `I'd like to schedule a viewing for ${propertyName}`);
       const aiResult = await generateAIResponseFull(from, session);
-      if (aiResult.leadData) captureLead(from, aiResult.leadData);
+      if (aiResult.leadData) await captureLead(from, aiResult.leadData);
       await sendTextMessage(from, aiResult.text);
       if (aiResult.scheduleViewing) {
         await handleViewingSchedule(from, aiResult.scheduleViewing);
@@ -110,9 +110,9 @@ export async function handleIncomingMessage(messagePayload) {
 
     // "Schedule Visit" button
     if (interactiveId === "schedule_viewing") {
-      addMessage(from, "user", "I'd like to schedule a property viewing");
+      await addMessage(from, "user", "I'd like to schedule a property viewing");
       const aiResult = await generateAIResponseFull(from, session);
-      if (aiResult.leadData) captureLead(from, aiResult.leadData);
+      if (aiResult.leadData) await captureLead(from, aiResult.leadData);
       await sendTextMessage(from, aiResult.text);
       return;
     }
@@ -137,12 +137,12 @@ export async function handleIncomingMessage(messagePayload) {
   }
 
   // --- AI conversation pipeline ---
-  addMessage(from, "user", userText);
+  await addMessage(from, "user", userText);
   const aiResult = await generateAIResponseFull(from, session);
 
   // Handle lead data capture
   if (aiResult.leadData) {
-    captureLead(from, aiResult.leadData);
+    await captureLead(from, aiResult.leadData);
   }
 
   // Log the conversation
@@ -158,9 +158,9 @@ export async function handleIncomingMessage(messagePayload) {
   }
 
   // Auto-escalate hot leads
-  const updatedSession = getSession(from);
+  const updatedSession = await getSession(from);
   if (shouldAutoEscalate(updatedSession) && updatedSession.state !== "ESCALATED") {
-    updateState(from, "ESCALATED");
+    await updateState(from, "ESCALATED");
     setTimeout(async () => {
       await sendTextMessage(
         from,
@@ -177,22 +177,11 @@ export async function handleIncomingMessage(messagePayload) {
 }
 
 /**
- * Generate AI response and record it
- */
-async function generateAIResponse(from, session) {
-  const result = await generateAIResponseFull(from, session);
-  if (result.leadData) {
-    captureLead(from, result.leadData);
-  }
-  return result.text;
-}
-
-/**
  * Full AI response with structured data
  */
 async function generateAIResponseFull(from, session) {
   const result = await generateResponse(session.history);
-  addMessage(from, "assistant", result.text);
+  await addMessage(from, "assistant", result.text);
   return result;
 }
 
@@ -221,7 +210,7 @@ async function sendConsentRequest(to) {
  * Send detailed property view with image
  */
 async function sendPropertyDetail(to, propertyId) {
-  const property = getPropertyById(propertyId);
+  const property = await getPropertyById(propertyId);
   if (!property) return;
 
   // Send image if available
@@ -258,8 +247,8 @@ async function sendPropertyDetail(to, propertyId) {
  * Handle viewing schedule from AI response
  */
 async function handleViewingSchedule(to, scheduleData) {
-  const session = getSession(to);
-  const viewing = createViewing({
+  const session = await getSession(to);
+  const viewing = await createViewing({
     userId: to,
     propertyId: scheduleData.propertyId || "unknown",
     propertyName: scheduleData.propertyName || "Not specified",
@@ -281,13 +270,13 @@ async function handleViewingSchedule(to, scheduleData) {
  * Send user's viewing history
  */
 async function sendUserViewings(to) {
-  const viewings = getUserViewings(to);
+  const viewings = await getUserViewings(to);
   if (viewings.length === 0) {
     await sendTextMessage(to, "📅 You don't have any scheduled viewings yet. Would you like to schedule one?");
     return;
   }
 
-  const lines = viewings.map((v, i) => 
+  const lines = viewings.map((v, i) =>
     `${i + 1}. *${v.propertyName}*\n   📋 Ref: ${v.id}\n   📆 ${v.preferredDate} at ${v.preferredTime}\n   📌 Status: ${v.status}`
   );
 
@@ -315,7 +304,7 @@ async function sendMainMenu(to) {
  * Send the property listing (WhatsApp allows max 10 rows per list)
  */
 async function sendPropertyList(to) {
-  const properties = getAllProperties();
+  const properties = await getAllProperties();
 
   // Split into sections of max 10 total rows
   const apartments = properties.filter(p => p.type === "Apartments" || p.type === "Hotel Apartments");
@@ -356,7 +345,7 @@ async function sendPropertyList(to) {
  * Handle escalation to human agent
  */
 async function handleEscalation(to, reason) {
-  updateState(to, "ESCALATED");
+  await updateState(to, "ESCALATED");
   await sendTextMessage(
     to,
     `👤 *Connecting you with a team member*\n\nI'm transferring you to one of our property consultants who'll be able to help you further.\n\n📞 You can also reach us directly:\n• Office: ${config.company.phone}\n• Cell: ${config.company.cellPhone}\n• Email: ${config.company.email}\n\nA team member will respond shortly. Thank you for your patience! 🙏`

@@ -1,9 +1,18 @@
 import OpenAI from "openai";
 import config from "../config/index.js";
+import { getPropertyContext, getAllProperties } from "../data/properties.js";
 
 const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
-const SYSTEM_PROMPT = `You are the AI assistant for ${config.company.name}, a premier real estate developer in Ghana.
+/**
+ * Build the system prompt dynamically, loading current properties from DB.
+ */
+async function buildSystemPrompt() {
+  const propertyContext = await getPropertyContext();
+  const properties = await getAllProperties();
+  const propertyIds = properties.map((p) => p.propertyId || p.id).join(", ");
+
+  return `You are the AI assistant for ${config.company.name}, a premier real estate developer in Ghana.
 
 ROLE & PERSONALITY:
 - You are friendly, professional, and knowledgeable about ${config.company.name}'s properties
@@ -20,7 +29,7 @@ COMPANY INFO:
 - Office: ${config.company.address}
 
 PROPERTIES YOU KNOW ABOUT:
-${getPropertyContext()}
+${propertyContext}
 
 INSTRUCTIONS:
 1. GREET warmly on first contact. Introduce yourself and ask how you can help.
@@ -47,21 +56,24 @@ VIEWING SCHEDULING:
 - When a customer wants to schedule a viewing/visit, collect: which property, preferred date, preferred time, and their name.
 - Once you have enough info (at least the property and date), include at the END of your response:
   [SCHEDULE_VIEWING]{"propertyId": "...", "propertyName": "...", "preferredDate": "...", "preferredTime": "...", "name": "..."}[/SCHEDULE_VIEWING]
-- Use these property IDs: arlo-cantonments, the-address, the-edge, nova, acasia-apartments, avant-garde, henriettas-residences, forte-residences, the-pelican, the-niiyo, palmers-place, acasia-townhomes
+- Use these property IDs: ${propertyIds}
 - This block will be stripped before sending to the user.
 
 FORMAT:
 - Keep responses under 300 words
 - Use short paragraphs
 - One topic per message when possible`;
+}
 
 /**
  * Generate a response from GPT-4o mini
  */
 export async function generateResponse(conversationHistory) {
   try {
+    const systemPrompt = await buildSystemPrompt();
+
     const messages = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: systemPrompt },
       ...conversationHistory.map((msg) => ({
         role: msg.role,
         content: msg.content,
@@ -136,85 +148,4 @@ function parseAIResponse(raw) {
   }
 
   return { text, leadData, escalate, scheduleViewing };
-}
-
-/**
- * Property knowledge base context (will be replaced by DB query later)
- */
-function getPropertyContext() {
-  return `
-1. *Arlo Cantonments* — Cantonments, Accra
-   - Type: Apartments (Studio, 1, 2 & 3 bedroom)
-   - Price: Starting from $83,000
-   - Status: Now Selling
-   - Link: https://arlo.devtracoplus.com
-
-2. *The Address* — Roman Ridge, Accra
-   - Type: Apartments (Studio, 1, 2, 3 bedroom & Penthouses)
-   - Price: Starting from $89,000
-   - Status: Now Selling
-   - Link: https://theaddress.devtracoplus.com
-
-3. *The Edge* — Accra
-   - Type: Apartments (Studio, 1, 2 & 3 bedroom)
-   - Price: Starting from $99,000
-   - Status: Now Selling
-   - Mixed-use development for urban living
-
-4. *NoVA* — Accra
-   - Type: Apartments (Studio, 1, 2 & 3 bedroom)
-   - Price: Starting from $141,347
-   - Status: Now Selling
-   - Mixed-use ultra modern urban lifestyle development
-   - Link: https://nova.devtracoplus.com
-
-5. *Acasia Apartments* — Accra
-   - Type: Apartments (1, 2 & 3 bedroom)
-   - Price: Starting from $145,000
-   - Status: Now Selling
-
-6. *Avant Garde* — Accra
-   - Type: Apartments (1, 2 & 3 bedroom)
-   - Price: Starting from $170,000
-   - Status: Now Selling
-   - Exceptionally high standard, uncompromising quality
-
-7. *Henrietta's Residences* — Cantonments, Accra
-   - Type: Apartments (1, 2 & 3 bedroom)
-   - Price: Starting from $245,000
-   - Status: Now Selling
-   - Strategic proximity to notable landmarks
-
-8. *Forte Residences* — Accra / Tema
-   - Type: Townhouses (2 to 4.5 bedroom)
-   - Price: Starting from $270,720
-   - Status: Now Selling
-   - Luxury gated community living
-   - Link: https://forte.devtracoplus.com
-
-9. *The Pelican Hotel Apartments* — Accra
-   - Type: Hotel Apartments (Investment property)
-   - Price: Starting from $274,125
-   - Status: Now Selling
-   - Proven hotel investment model with managed returns
-   - Link: https://pelican.devtracoplus.com
-
-10. *The Niiyo* — Dzorwulu, Accra
-    - Type: Apartments (1, 2 & 3 bedroom)
-    - Price: Starting from $275,000
-    - Status: Now Selling
-    - Residential oasis, contemporary living
-
-11. *Palmer's Place* — Accra
-    - Type: Townhomes (exclusive, only 7 units)
-    - Price: Starting from $760,000
-    - Status: Limited Availability
-    - First class workmanship
-
-12. *Acasia Townhomes* — Accra
-    - Type: Townhomes (3, 4 & 5 bedroom)
-    - Price: Starting from $850,000
-    - Status: Limited Availability
-    - Iconic luxury for discerning homeowners
-  `;
 }

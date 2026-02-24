@@ -1,44 +1,59 @@
 import config from "../config/index.js";
+import { isDBConnected } from "../db/connection.js";
+import SessionModel from "../db/models/Session.js";
 
 /**
- * In-memory session store for conversation context.
- * In production, swap this for Redis or DynamoDB.
+ * Session service — MongoDB-backed with in-memory fallback.
  *
- * Each session:
- *  {
- *    userId: string,
- *    history: [{ role: "user"|"assistant", content: string, timestamp }],
- *    state: string,           // current conversation state
- *    leadData: {},            // captured lead info
- *    leadScore: number,
- *    lastActivity: Date,
- *    consentGiven: boolean,   // GDPR consent
- *    metadata: {}             // arbitrary key-value
- *  }
+ * The in-memory cache keeps hot sessions for fast access.
+ * MongoDB provides persistence across server restarts.
  */
 
-const sessions = new Map();
+const cache = new Map(); // userId -> session (in-memory hot cache)
 
-export function getSession(userId) {
-  const session = sessions.get(userId);
+// ───────── Core API ─────────
+
+export async function getSession(userId) {
+  // Check cache first
+  let session = cache.get(userId);
+
   if (session) {
-    // Check TTL
     const elapsed = (Date.now() - session.lastActivity) / 1000 / 60;
     if (elapsed > config.session.ttlMinutes) {
-      sessions.delete(userId);
-      return createSession(userId);
+      cache.delete(userId);
+      return await createSession(userId);
     }
     session.lastActivity = Date.now();
     return session;
   }
-  return createSession(userId);
+
+  // Try loading from MongoDB
+  if (isDBConnected()) {
+    try {
+      const doc = await SessionModel.findOne({ userId }).lean();
+      if (doc) {
+        session = docToSession(doc);
+        const elapsed = (Date.now() - session.lastActivity) / 1000 / 60;
+        if (elapsed > config.session.ttlMinutes) {
+          return await createSession(userId);
+        }
+        session.lastActivity = Date.now();
+        cache.set(userId, session);
+        return session;
+      }
+    } catch (err) {
+      console.error("[Session] DB load failed:", err.message);
+    }
+  }
+
+  return await createSession(userId);
 }
 
-export function createSession(userId) {
+export async function createSession(userId) {
   const session = {
     userId,
     history: [],
-    state: "GREETING",  // initial state
+    state: "GREETING",
     leadData: {
       name: null,
       email: null,
@@ -53,63 +68,116 @@ export function createSession(userId) {
     consentGiven: false,
     metadata: {},
   };
-  sessions.set(userId, session);
+  cache.set(userId, session);
+  persistSession(session); // fire-and-forget
   return session;
 }
 
-export function addMessage(userId, role, content) {
-  const session = getSession(userId);
-  session.history.push({
-    role,
-    content,
-    timestamp: Date.now(),
-  });
+export async function addMessage(userId, role, content) {
+  const session = await getSession(userId);
+  session.history.push({ role, content, timestamp: Date.now() });
 
-  // Trim to maxHistory
   if (session.history.length > config.session.maxHistory) {
     session.history = session.history.slice(-config.session.maxHistory);
   }
 
   session.lastActivity = Date.now();
+  persistSession(session);
   return session;
 }
 
-export function updateState(userId, newState) {
-  const session = getSession(userId);
+export async function updateState(userId, newState) {
+  const session = await getSession(userId);
   session.state = newState;
   session.lastActivity = Date.now();
+  persistSession(session);
   return session;
 }
 
-export function updateLeadData(userId, data) {
-  const session = getSession(userId);
+export async function updateLeadData(userId, data) {
+  const session = await getSession(userId);
   Object.assign(session.leadData, data);
   session.lastActivity = Date.now();
   recalculateLeadScore(session);
+  persistSession(session);
   return session;
 }
 
-export function setConsent(userId, consent) {
-  const session = getSession(userId);
+export async function setConsent(userId, consent) {
+  const session = await getSession(userId);
   session.consentGiven = consent;
+  persistSession(session);
   return session;
 }
 
-export function deleteSession(userId) {
-  sessions.delete(userId);
+export async function deleteSession(userId) {
+  cache.delete(userId);
+  if (isDBConnected()) {
+    try { await SessionModel.deleteOne({ userId }); } catch {}
+  }
 }
 
-export function getAllSessions() {
-  return Array.from(sessions.values());
+export async function getAllSessions() {
+  if (isDBConnected()) {
+    try {
+      const docs = await SessionModel.find({}).lean();
+      return docs.map(docToSession);
+    } catch (err) {
+      console.error("[Session] DB getAllSessions failed:", err.message);
+    }
+  }
+  return Array.from(cache.values());
 }
 
-export function getActiveSessionCount() {
-  return sessions.size;
+export async function getActiveSessionCount() {
+  if (isDBConnected()) {
+    try {
+      const cutoff = Date.now() - config.session.ttlMinutes * 60 * 1000;
+      return await SessionModel.countDocuments({ lastActivity: { $gte: cutoff } });
+    } catch {}
+  }
+  return cache.size;
 }
 
-/**
- * Simple rule-based lead scoring
- */
+// ───────── Persistence ─────────
+
+async function persistSession(session) {
+  if (!isDBConnected()) return;
+  try {
+    await SessionModel.findOneAndUpdate(
+      { userId: session.userId },
+      {
+        userId: session.userId,
+        history: session.history,
+        state: session.state,
+        leadData: session.leadData,
+        leadScore: session.leadScore,
+        lastActivity: session.lastActivity,
+        consentGiven: session.consentGiven,
+        metadata: session.metadata,
+      },
+      { upsert: true, new: true }
+    );
+  } catch (err) {
+    console.error("[Session] Persist failed:", err.message);
+  }
+}
+
+function docToSession(doc) {
+  return {
+    userId: doc.userId,
+    history: doc.history || [],
+    state: doc.state || "GREETING",
+    leadData: doc.leadData || { name: null, email: null, phone: doc.userId, budget: null, propertyInterest: null, preferredLocation: null, timeline: null },
+    leadScore: doc.leadScore || 0,
+    lastActivity: doc.lastActivity || Date.now(),
+    consentGiven: doc.consentGiven || false,
+    metadata: doc.metadata || {},
+  };
+}
+
+// ───────── Lead Scoring ─────────
+
 function recalculateLeadScore(session) {
   let score = 0;
   const ld = session.leadData;
@@ -121,7 +189,6 @@ function recalculateLeadScore(session) {
   if (ld.preferredLocation) score += 10;
   if (ld.timeline) score += 10;
 
-  // Engagement bonus
   if (session.history.length > 5) score += 5;
   if (session.history.length > 10) score += 5;
   if (session.consentGiven) score += 5;

@@ -1,16 +1,21 @@
-import config from "../config/index.js";
+import { isDBConnected } from "../db/connection.js";
+import PropertyModel from "../db/models/Property.js";
 
 /**
- * Property database — sourced from devtracoplus.com
- * Will be replaced by CRM/DB integration.
+ * Property service — MongoDB-backed with hardcoded fallback.
+ *
+ * Admins can add/edit/delete properties via the dashboard.
+ * The AI reads from MongoDB so it always has the latest data.
  */
-const properties = [
+
+// ───────── Default seed data (used only if DB is empty or disconnected) ─────────
+const DEFAULT_PROPERTIES = [
   {
-    id: "arlo-cantonments",
+    propertyId: "arlo-cantonments",
     name: "Arlo Cantonments",
     location: "Cantonments, Accra",
     type: "Apartments",
-    bedrooms: [0, 1, 2, 3], // 0 = studio
+    bedrooms: [0, 1, 2, 3],
     priceFrom: 83000,
     currency: "USD",
     amenities: [],
@@ -20,11 +25,11 @@ const properties = [
     description: "Anchored in the prestigious and serene suburb of Cantonments, ARLO is a curated collection of residences ranging from studios to three-bedroom apartments.",
   },
   {
-    id: "the-address",
+    propertyId: "the-address",
     name: "The Address",
     location: "Roman Ridge, Accra",
     type: "Apartments",
-    bedrooms: [0, 1, 2, 3], // includes penthouses
+    bedrooms: [0, 1, 2, 3],
     priceFrom: 89000,
     currency: "USD",
     amenities: [],
@@ -34,7 +39,7 @@ const properties = [
     description: "A prestigious collection of luxury apartments in Roman Ridge. The Address comes in studio, 1, 2 & 3 bedroom apartments and Penthouses.",
   },
   {
-    id: "the-edge",
+    propertyId: "the-edge",
     name: "The Edge",
     location: "Accra",
     type: "Apartments",
@@ -48,7 +53,7 @@ const properties = [
     description: "A mixed-use development designed to promote an urban quarters where people can live and enjoy life at the same time.",
   },
   {
-    id: "nova",
+    propertyId: "nova",
     name: "NoVA",
     location: "Accra",
     type: "Apartments",
@@ -62,7 +67,7 @@ const properties = [
     description: "A mixed-use ultra modern urban lifestyle development. NoVA comes in studios, 1, 2 and 3 bedroom apartments.",
   },
   {
-    id: "acasia-apartments",
+    propertyId: "acasia-apartments",
     name: "Acasia Apartments",
     location: "Accra",
     type: "Apartments",
@@ -76,7 +81,7 @@ const properties = [
     description: "An iconic symbol of luxury, quality and convenience for discerning homeowners in the heart of Accra.",
   },
   {
-    id: "avant-garde",
+    propertyId: "avant-garde",
     name: "Avant Garde",
     location: "Accra",
     type: "Apartments",
@@ -90,7 +95,7 @@ const properties = [
     description: "Designed to an exceptionally high standard, crafted to reflect residents' expectations of uncompromising quality and originality.",
   },
   {
-    id: "henriettas-residences",
+    propertyId: "henriettas-residences",
     name: "Henrietta's Residences",
     location: "Cantonments, Accra",
     type: "Apartments",
@@ -104,7 +109,7 @@ const properties = [
     description: "Located in Cantonments with brave design features and strategic proximity to notable landmarks.",
   },
   {
-    id: "forte-residences",
+    propertyId: "forte-residences",
     name: "Forte Residences",
     location: "Accra / Tema",
     type: "Townhouses",
@@ -118,7 +123,7 @@ const properties = [
     description: "Luxury living in a gated community. 2 to 4.5-bedroom townhouses that take residential living to the next level.",
   },
   {
-    id: "the-pelican",
+    propertyId: "the-pelican",
     name: "The Pelican Hotel Apartments",
     location: "Accra",
     type: "Hotel Apartments",
@@ -132,7 +137,7 @@ const properties = [
     description: "Invest in a hotel apartment in Accra. A proven and successful hotel investment model with managed returns.",
   },
   {
-    id: "the-niiyo",
+    propertyId: "the-niiyo",
     name: "The Niiyo",
     location: "Dzorwulu, Accra",
     type: "Apartments",
@@ -146,7 +151,7 @@ const properties = [
     description: "A residential oasis in Dzorwulu — the ultimate in simple and comfortable contemporary living.",
   },
   {
-    id: "palmers-place",
+    propertyId: "palmers-place",
     name: "Palmer's Place",
     location: "Accra",
     type: "Townhomes",
@@ -160,7 +165,7 @@ const properties = [
     description: "An exclusive development of seven modern townhomes with uncompromised, first class workmanship.",
   },
   {
-    id: "acasia-townhomes",
+    propertyId: "acasia-townhomes",
     name: "Acasia Townhomes",
     location: "Accra",
     type: "Townhomes",
@@ -175,11 +180,78 @@ const properties = [
   },
 ];
 
-/**
- * Search properties by criteria
- */
-export function searchProperties({ location, type, minBudget, maxBudget, bedrooms } = {}) {
-  return properties.filter((p) => {
+// ───────── Normalize DB doc to plain object ─────────
+
+function docToProperty(doc) {
+  return {
+    id: doc.propertyId,
+    propertyId: doc.propertyId,
+    name: doc.name,
+    location: doc.location,
+    type: doc.type,
+    bedrooms: doc.bedrooms || [],
+    priceFrom: doc.priceFrom,
+    currency: doc.currency || "USD",
+    amenities: doc.amenities || [],
+    status: doc.status || "Now Selling",
+    images: doc.images || [],
+    projectUrl: doc.projectUrl || "",
+    description: doc.description || "",
+    active: doc.active !== false,
+  };
+}
+
+function defaultToProperty(d) {
+  return { ...d, id: d.propertyId, active: true };
+}
+
+// ───────── Seed DB with defaults ─────────
+
+export async function seedProperties() {
+  if (!isDBConnected()) return;
+  try {
+    const count = await PropertyModel.countDocuments();
+    if (count === 0) {
+      await PropertyModel.insertMany(DEFAULT_PROPERTIES);
+      console.log(`[Properties] Seeded ${DEFAULT_PROPERTIES.length} properties into MongoDB`);
+    } else {
+      console.log(`[Properties] ${count} properties already in MongoDB`);
+    }
+  } catch (err) {
+    console.error("[Properties] Seed failed:", err.message);
+  }
+}
+
+// ───────── Query API ─────────
+
+export async function getAllProperties() {
+  if (isDBConnected()) {
+    try {
+      const docs = await PropertyModel.find({ active: true }).lean();
+      return docs.map(docToProperty);
+    } catch (err) {
+      console.error("[Properties] DB query failed:", err.message);
+    }
+  }
+  return DEFAULT_PROPERTIES.map(defaultToProperty);
+}
+
+export async function getPropertyById(id) {
+  if (isDBConnected()) {
+    try {
+      const doc = await PropertyModel.findOne({ propertyId: id, active: true }).lean();
+      return doc ? docToProperty(doc) : null;
+    } catch (err) {
+      console.error("[Properties] DB getById failed:", err.message);
+    }
+  }
+  const found = DEFAULT_PROPERTIES.find((p) => p.propertyId === id);
+  return found ? defaultToProperty(found) : null;
+}
+
+export async function searchProperties({ location, type, minBudget, maxBudget, bedrooms } = {}) {
+  const all = await getAllProperties();
+  return all.filter((p) => {
     if (location && !p.location.toLowerCase().includes(location.toLowerCase())) return false;
     if (type && !p.type.toLowerCase().includes(type.toLowerCase())) return false;
     if (maxBudget && p.priceFrom > maxBudget) return false;
@@ -189,29 +261,70 @@ export function searchProperties({ location, type, minBudget, maxBudget, bedroom
   });
 }
 
-/**
- * Get property by ID
- */
-export function getPropertyById(id) {
-  return properties.find((p) => p.id === id) || null;
+// ───────── Admin CRUD ─────────
+
+export async function createProperty(data) {
+  if (!isDBConnected()) throw new Error("Database not connected");
+
+  // Generate ID from name if not provided
+  const propertyId = data.propertyId || data.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+  const property = new PropertyModel({
+    propertyId,
+    name: data.name,
+    location: data.location,
+    type: data.type || "Apartments",
+    bedrooms: data.bedrooms || [],
+    priceFrom: data.priceFrom,
+    currency: data.currency || "USD",
+    amenities: data.amenities || [],
+    status: data.status || "Now Selling",
+    images: data.images || [],
+    projectUrl: data.projectUrl || "",
+    description: data.description || "",
+    active: true,
+  });
+
+  await property.save();
+  console.log(`[Properties] Created: ${property.name} (${propertyId})`);
+  return docToProperty(property.toObject());
 }
 
-/**
- * Get all properties
- */
-export function getAllProperties() {
-  return properties;
+export async function updateProperty(propertyId, updates) {
+  if (!isDBConnected()) throw new Error("Database not connected");
+
+  const doc = await PropertyModel.findOneAndUpdate(
+    { propertyId },
+    { $set: updates },
+    { new: true }
+  );
+  if (!doc) return null;
+  console.log(`[Properties] Updated: ${doc.name} (${propertyId})`);
+  return docToProperty(doc.toObject());
 }
 
-/**
- * Format property for WhatsApp message
- */
+export async function deleteProperty(propertyId) {
+  if (!isDBConnected()) throw new Error("Database not connected");
+
+  // Soft delete
+  const doc = await PropertyModel.findOneAndUpdate(
+    { propertyId },
+    { active: false },
+    { new: true }
+  );
+  if (!doc) return null;
+  console.log(`[Properties] Deleted (soft): ${doc.name} (${propertyId})`);
+  return docToProperty(doc.toObject());
+}
+
+// ───────── WhatsApp Formatting ─────────
+
 export function formatPropertyCard(property) {
   let beds;
-  if (property.bedrooms.length === 0) {
+  if (!property.bedrooms || property.bedrooms.length === 0) {
     beds = "🏨 Investment Property";
   } else if (property.bedrooms.includes(0)) {
-    const others = property.bedrooms.filter(b => b > 0);
+    const others = property.bedrooms.filter((b) => b > 0);
     beds = `🛏️ Studio${others.length ? `, ${others.join(", ")} bedroom` : ""}`;
   } else {
     beds = `🛏️ ${property.bedrooms.join(", ")} bedroom`;
@@ -227,4 +340,33 @@ export function formatPropertyCard(property) {
     property.description,
     property.projectUrl ? `\n🔗 Learn more: ${property.projectUrl}` : "",
   ].join("\n");
+}
+
+/**
+ * Build property context for the AI system prompt.
+ * Dynamically generated from the database.
+ */
+export async function getPropertyContext() {
+  const properties = await getAllProperties();
+
+  return properties.map((p, i) => {
+    let beds;
+    if (!p.bedrooms || p.bedrooms.length === 0) {
+      beds = "Investment Property";
+    } else if (p.bedrooms.includes(0)) {
+      const others = p.bedrooms.filter((b) => b > 0);
+      beds = `Studio${others.length ? `, ${others.join(", ")} bedroom` : ""}`;
+    } else {
+      beds = `${p.bedrooms.join(", ")} bedroom`;
+    }
+
+    return [
+      `${i + 1}. *${p.name}* — ${p.location}`,
+      `   - Type: ${p.type} (${beds})`,
+      `   - Price: Starting from $${p.priceFrom.toLocaleString()}`,
+      `   - Status: ${p.status}`,
+      p.description ? `   - ${p.description}` : "",
+      p.projectUrl ? `   - Link: ${p.projectUrl}` : "",
+    ].filter(Boolean).join("\n");
+  }).join("\n\n");
 }

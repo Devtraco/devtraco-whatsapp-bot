@@ -1,22 +1,39 @@
 import config from "../config/index.js";
+import { isDBConnected } from "../db/connection.js";
+import ViewingModel from "../db/models/Viewing.js";
 import { syncViewingToCRM } from "./crmSync.js";
 
 /**
- * In-memory viewing appointment store.
- * In production, replace with a database or calendar integration (Outlook/Calendly).
+ * Viewing scheduler — MongoDB-backed with in-memory fallback.
  */
-const viewings = new Map(); // viewingId -> viewing
+
+const memoryViewings = new Map();
 let viewingCounter = 0;
 
-/**
- * Create a new viewing request
- */
-export function createViewing({ userId, propertyId, propertyName, preferredDate, preferredTime, name, phone, email, notes }) {
-  const id = `VW-${++viewingCounter}`;
+// ───────── Get next counter value ─────────
+
+async function getNextId() {
+  if (isDBConnected()) {
+    try {
+      const last = await ViewingModel.findOne().sort({ createdAt: -1 }).lean();
+      if (last) {
+        const num = parseInt(last.viewingId.replace("VW-", ""), 10);
+        return `VW-${(num || 0) + 1}`;
+      }
+    } catch {}
+  }
+  return `VW-${++viewingCounter}`;
+}
+
+// ───────── CRUD ─────────
+
+export async function createViewing({ userId, propertyId, propertyName, preferredDate, preferredTime, name, phone, email, notes }) {
+  const id = await getNextId();
   const viewing = {
-    id,
+    viewingId: id,
+    id,  // alias for backward compat
     userId,
-    propertyId,
+    propertyId: propertyId || "unknown",
     propertyName: propertyName || "Not specified",
     preferredDate: preferredDate || "To be confirmed",
     preferredTime: preferredTime || "To be confirmed",
@@ -24,50 +41,94 @@ export function createViewing({ userId, propertyId, propertyName, preferredDate,
     phone: phone || userId,
     email: email || "Not provided",
     notes: notes || "",
-    status: "PENDING",    // PENDING, CONFIRMED, CANCELLED, COMPLETED
+    status: "PENDING",
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
 
-  viewings.set(id, viewing);
+  if (isDBConnected()) {
+    try {
+      const doc = new ViewingModel(viewing);
+      await doc.save();
+    } catch (err) {
+      console.error("[Viewing] DB save failed:", err.message);
+      memoryViewings.set(id, viewing);
+    }
+  } else {
+    memoryViewings.set(id, viewing);
+  }
+
   console.log(`[Viewing] Created ${id} for ${userId} — ${propertyName}`);
+
   // Sync to Dynamics 365 CRM (async, non-blocking)
   syncViewingToCRM(viewing).catch((err) =>
     console.error(`[CRM] Viewing sync failed for ${id}:`, err.message)
   );
+
   return viewing;
 }
 
-/**
- * Get all viewings for a user
- */
-export function getUserViewings(userId) {
-  return Array.from(viewings.values()).filter(v => v.userId === userId);
+export async function getUserViewings(userId) {
+  if (isDBConnected()) {
+    try {
+      const docs = await ViewingModel.find({ userId }).sort({ createdAt: -1 }).lean();
+      return docs.map(docToViewing);
+    } catch (err) {
+      console.error("[Viewing] DB getUserViewings failed:", err.message);
+    }
+  }
+  return Array.from(memoryViewings.values()).filter((v) => v.userId === userId);
 }
 
-/**
- * Get all viewings (admin)
- */
-export function getAllViewings() {
-  return Array.from(viewings.values()).sort((a, b) => b.createdAt - a.createdAt);
+export async function getAllViewings() {
+  if (isDBConnected()) {
+    try {
+      const docs = await ViewingModel.find().sort({ createdAt: -1 }).lean();
+      return docs.map(docToViewing);
+    } catch (err) {
+      console.error("[Viewing] DB getAllViewings failed:", err.message);
+    }
+  }
+  return Array.from(memoryViewings.values()).sort((a, b) => b.createdAt - a.createdAt);
 }
 
-/**
- * Get viewing by ID
- */
-export function getViewingById(id) {
-  return viewings.get(id) || null;
+export async function getViewingById(id) {
+  if (isDBConnected()) {
+    try {
+      const doc = await ViewingModel.findOne({ viewingId: id }).lean();
+      return doc ? docToViewing(doc) : null;
+    } catch {}
+  }
+  return memoryViewings.get(id) || null;
 }
 
-/**
- * Update viewing status
- */
-export function updateViewingStatus(id, status) {
-  const viewing = viewings.get(id);
+export async function updateViewingStatus(id, status) {
+  if (isDBConnected()) {
+    try {
+      const doc = await ViewingModel.findOneAndUpdate(
+        { viewingId: id },
+        { status, updatedAt: Date.now() },
+        { new: true }
+      ).lean();
+      return doc ? docToViewing(doc) : null;
+    } catch (err) {
+      console.error("[Viewing] DB updateStatus failed:", err.message);
+    }
+  }
+  const viewing = memoryViewings.get(id);
   if (!viewing) return null;
   viewing.status = status;
   viewing.updatedAt = Date.now();
   return viewing;
+}
+
+export async function getPendingViewingCount() {
+  if (isDBConnected()) {
+    try {
+      return await ViewingModel.countDocuments({ status: "PENDING" });
+    } catch {}
+  }
+  return Array.from(memoryViewings.values()).filter((v) => v.status === "PENDING").length;
 }
 
 /**
@@ -77,7 +138,7 @@ export function formatViewingConfirmation(viewing) {
   return [
     `📅 *Viewing Request Confirmed!*`,
     ``,
-    `📋 Reference: *${viewing.id}*`,
+    `📋 Reference: *${viewing.viewingId || viewing.id}*`,
     `🏠 Property: *${viewing.propertyName}*`,
     `📆 Date: ${viewing.preferredDate}`,
     `🕐 Time: ${viewing.preferredTime}`,
@@ -91,9 +152,23 @@ export function formatViewingConfirmation(viewing) {
   ].join("\n");
 }
 
-/**
- * Get pending viewing count (for admin stats)
- */
-export function getPendingViewingCount() {
-  return Array.from(viewings.values()).filter(v => v.status === "PENDING").length;
+// ───────── Helpers ─────────
+
+function docToViewing(doc) {
+  return {
+    id: doc.viewingId,
+    viewingId: doc.viewingId,
+    userId: doc.userId,
+    propertyId: doc.propertyId,
+    propertyName: doc.propertyName,
+    preferredDate: doc.preferredDate,
+    preferredTime: doc.preferredTime,
+    name: doc.name,
+    phone: doc.phone,
+    email: doc.email,
+    notes: doc.notes,
+    status: doc.status,
+    createdAt: doc.createdAt ? new Date(doc.createdAt).getTime() : Date.now(),
+    updatedAt: doc.updatedAt ? new Date(doc.updatedAt).getTime() : Date.now(),
+  };
 }

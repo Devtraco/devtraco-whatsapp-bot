@@ -5,7 +5,7 @@ import { syncLeadToCRM } from "./crmSync.js";
 /**
  * Captures lead data extracted by the AI and scores the lead.
  */
-export function captureLead(userId, leadData) {
+export async function captureLead(userId, leadData) {
   if (!leadData || typeof leadData !== "object") return null;
 
   // Clean up the captured data
@@ -18,7 +18,7 @@ export function captureLead(userId, leadData) {
 
   if (Object.keys(clean).length === 0) return null;
 
-  const session = updateLeadData(userId, clean);
+  const session = await updateLeadData(userId, clean);
   console.log(
     `[Lead] ${userId} — score: ${session.leadScore} — data:`,
     JSON.stringify(session.leadData)

@@ -3,6 +3,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import rateLimit from "express-rate-limit";
 import config from "./src/config/index.js";
+import { connectDB } from "./src/db/connection.js";
+import { seedProperties } from "./src/data/properties.js";
 import webhookRoutes from "./src/routes/webhook.js";
 import apiRoutes from "./src/routes/api.js";
 
@@ -75,11 +77,25 @@ app.use((err, req, res, next) => {
 });
 
 // ---------- Start ----------
-app.listen(config.port, () => {
-  console.log(`\n🤖 Devtraco WhatsApp AI Chatbot`);
-  console.log(`   Server running on port ${config.port}`);
-  console.log(`   Webhook:    http://localhost:${config.port}/webhook`);
-  console.log(`   Dashboard:  http://localhost:${config.port}/dashboard`);
-  console.log(`   API:        http://localhost:${config.port}/api/health`);
-  console.log(`   Model:      ${config.openai.model}\n`);
+async function start() {
+  // Connect to MongoDB
+  const dbConnected = await connectDB();
+  if (dbConnected) {
+    await seedProperties();
+  }
+
+  app.listen(config.port, () => {
+    console.log(`\n🤖 Devtraco WhatsApp AI Chatbot`);
+    console.log(`   Server running on port ${config.port}`);
+    console.log(`   Database:   ${dbConnected ? "MongoDB Atlas ✅" : "In-memory (no persistence) ⚠️"}`);
+    console.log(`   Webhook:    http://localhost:${config.port}/webhook`);
+    console.log(`   Dashboard:  http://localhost:${config.port}/dashboard`);
+    console.log(`   API:        http://localhost:${config.port}/api/health`);
+    console.log(`   Model:      ${config.openai.model}\n`);
+  });
+}
+
+start().catch((err) => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
 });

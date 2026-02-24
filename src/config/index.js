@@ -29,6 +29,12 @@ const config = {
     maxHistory: 20, // max messages kept in context
   },
 
+  // MongoDB
+  mongodb: {
+    uri: process.env.MONGODB_URI || "",
+    dbName: process.env.MONGODB_DB_NAME || "devtraco-bot",
+  },
+
   // Rate limiting
   rateLimit: {
     windowMs: 60 * 1000,   // 1 minute
