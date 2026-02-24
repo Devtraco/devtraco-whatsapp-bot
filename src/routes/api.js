@@ -1,4 +1,6 @@
 import express from "express";
+import multer from "multer";
+import { v4 as uuidv4 } from "uuid";
 import {
   getAllSessions,
   getActiveSessionCount,
@@ -14,8 +16,23 @@ import {
 } from "../data/properties.js";
 import { getAllViewings, getPendingViewingCount, updateViewingStatus } from "../services/viewingScheduler.js";
 import { getCRMSyncStats, getCRMSyncLog, syncLeadToCRM } from "../services/crmSync.js";
+import Image from "../db/models/Image.js";
+import { isDBConnected } from "../db/connection.js";
 
 const router = express.Router();
+
+// Multer config — store in memory (then save to MongoDB)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB max
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"), false);
+    }
+  },
+});
 
 /**
  * GET /api/health — Health check
@@ -230,6 +247,128 @@ router.post("/crm/sync/:userId", async (req, res) => {
     const report = formatLeadReport(session);
     const result = await syncLeadToCRM(report);
     res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========== IMAGE UPLOAD & SERVING ==========
+
+/**
+ * POST /api/properties/:id/images — Upload images for a property (max 5 at once)
+ */
+router.post("/properties/:id/images", upload.array("images", 5), async (req, res) => {
+  if (!isDBConnected()) {
+    return res.status(503).json({ error: "Database not connected" });
+  }
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ error: "No image files provided" });
+  }
+
+  try {
+    const propertyId = req.params.id;
+    // Verify property exists
+    const property = await getPropertyById(propertyId);
+    if (!property) {
+      return res.status(404).json({ error: "Property not found" });
+    }
+
+    // Count existing images for ordering
+    const existingCount = await Image.countDocuments({ propertyId });
+
+    const savedImages = [];
+    for (let i = 0; i < req.files.length; i++) {
+      const file = req.files[i];
+      const imageId = uuidv4();
+      const image = new Image({
+        imageId,
+        propertyId,
+        filename: file.originalname,
+        contentType: file.mimetype,
+        data: file.buffer,
+        size: file.size,
+        caption: req.body.caption || "",
+        order: existingCount + i,
+      });
+      await image.save();
+      savedImages.push({
+        imageId,
+        filename: file.originalname,
+        size: file.size,
+        url: `/api/images/${imageId}`,
+      });
+    }
+
+    // Update property's images array with the serve URLs
+    const allImages = await Image.find({ propertyId }).sort({ order: 1 }).select("imageId");
+    const imageUrls = allImages.map((img) => `/api/images/${img.imageId}`);
+    await updateProperty(propertyId, { images: imageUrls });
+
+    res.status(201).json({ uploaded: savedImages.length, images: savedImages });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/images/:imageId — Serve an image (publicly accessible for WhatsApp)
+ */
+router.get("/images/:imageId", async (req, res) => {
+  try {
+    const image = await Image.findOne({ imageId: req.params.imageId });
+    if (!image) {
+      return res.status(404).json({ error: "Image not found" });
+    }
+    res.set("Content-Type", image.contentType);
+    res.set("Cache-Control", "public, max-age=86400"); // cache 24h
+    res.send(image.data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/properties/:id/images — List images for a property
+ */
+router.get("/properties/:id/images", async (req, res) => {
+  try {
+    const images = await Image.find({ propertyId: req.params.id })
+      .sort({ order: 1 })
+      .select("imageId filename contentType size caption order createdAt");
+    res.json({
+      propertyId: req.params.id,
+      count: images.length,
+      images: images.map((img) => ({
+        imageId: img.imageId,
+        filename: img.filename,
+        size: img.size,
+        caption: img.caption,
+        url: `/api/images/${img.imageId}`,
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * DELETE /api/images/:imageId — Delete a single image
+ */
+router.delete("/images/:imageId", async (req, res) => {
+  if (!isDBConnected()) {
+    return res.status(503).json({ error: "Database not connected" });
+  }
+  try {
+    const image = await Image.findOneAndDelete({ imageId: req.params.imageId });
+    if (!image) {
+      return res.status(404).json({ error: "Image not found" });
+    }
+    // Update property's images array
+    const remaining = await Image.find({ propertyId: image.propertyId }).sort({ order: 1 }).select("imageId");
+    const imageUrls = remaining.map((img) => `/api/images/${img.imageId}`);
+    await updateProperty(image.propertyId, { images: imageUrls });
+
+    res.json({ success: true, message: "Image deleted" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

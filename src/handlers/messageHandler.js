@@ -12,6 +12,9 @@ import { getAllProperties, getPropertyById, formatPropertyCard } from "../data/p
 import { createViewing, formatViewingConfirmation, getUserViewings } from "../services/viewingScheduler.js";
 import config from "../config/index.js";
 
+// Base URL for serving uploaded images (needed for WhatsApp absolute URLs)
+const BASE_URL = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `http://localhost:${config.port}`;
+
 /**
  * Main conversation handler — routes every incoming message through the AI pipeline.
  */
@@ -216,9 +219,14 @@ async function sendPropertyDetail(to, propertyId) {
   // Send image if available
   if (property.images && property.images.length > 0) {
     try {
+      // Resolve relative paths (uploaded images) to absolute URLs
+      let imageUrl = property.images[0];
+      if (imageUrl.startsWith("/")) {
+        imageUrl = `${BASE_URL}${imageUrl}`;
+      }
       await sendImageMessage(
         to,
-        property.images[0],
+        imageUrl,
         `🏠 ${property.name} — ${property.location}`
       );
     } catch (err) {
