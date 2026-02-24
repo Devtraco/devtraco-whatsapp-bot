@@ -148,6 +148,18 @@ export async function handleIncomingMessage(messagePayload) {
     await captureLead(from, aiResult.leadData);
   }
 
+  // Fallback: if AI forgot the SHOW_PROPERTY tag, detect property name in response
+  if (!aiResult.showProperty) {
+    const detected = await detectPropertyInText(aiResult.text);
+    if (detected) {
+      aiResult.showProperty = detected;
+      console.log(`[Fallback] Detected property in AI text: ${detected}`);
+    }
+  }
+
+  // Strip "I can't show/display images" sentences from AI text
+  aiResult.text = cleanImageRefusals(aiResult.text);
+
   // Log the conversation
   console.log(`[Chat] ${from} → ${userText}`);
   console.log(`[Chat] Bot → ${aiResult.text.slice(0, 150)}...`);
@@ -229,6 +241,45 @@ async function sendConsentRequest(to) {
     "Data Privacy",
     "We respect your privacy"
   );
+}
+
+/**
+ * Fallback: detect a property name mentioned in AI text when SHOW_PROPERTY tag was omitted.
+ * Returns the propertyId if a single property is clearly being discussed, otherwise null.
+ */
+async function detectPropertyInText(text) {
+  try {
+    const properties = await getAllProperties();
+    const lower = text.toLowerCase();
+    const matches = properties.filter(p => {
+      const name = (p.name || "").toLowerCase();
+      return name && lower.includes(name);
+    });
+    // Only auto-send if exactly one property is clearly referenced
+    if (matches.length === 1) {
+      return matches[0].propertyId || matches[0].id;
+    }
+  } catch (err) {
+    console.warn("[Fallback] detectPropertyInText error:", err.message);
+  }
+  return null;
+}
+
+/**
+ * Strip sentences where the AI says it cannot show/display images.
+ * These are incorrect — the system CAN send images via the SHOW_PROPERTY mechanism.
+ */
+function cleanImageRefusals(text) {
+  // Remove sentences containing "can't show images", "can't display images", etc.
+  const patterns = [
+    /[^.!?\n]*(?:can'?t|cannot|unable to)\s+(?:show|display|send|share)\s+images[^.!?\n]*[.!?]?\s*/gi,
+    /[^.!?\n]*(?:can'?t|cannot|unable to)\s+(?:show|display|send|share)\s+(?:photos?|pictures?|visuals?)\s+(?:directly|here|in this chat)[^.!?\n]*[.!?]?\s*/gi,
+  ];
+  let cleaned = text;
+  for (const pat of patterns) {
+    cleaned = cleaned.replace(pat, "");
+  }
+  return cleaned.trim() || text; // fallback to original if everything got stripped
 }
 
 /**
