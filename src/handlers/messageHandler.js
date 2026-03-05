@@ -1,5 +1,5 @@
 import { generateResponse } from "../services/ai.js";
-import { getSession, addMessage, updateState, setConsent } from "../services/session.js";
+import { getSession, addMessage, updateState, setConsent, updateLeadData } from "../services/session.js";
 import { captureLead, shouldAutoEscalate } from "../services/leadCapture.js";
 import {
   sendTextMessage,
@@ -10,7 +10,7 @@ import {
   markAsRead,
 } from "../services/whatsapp.js";
 import { getAllProperties, getPropertyById, formatPropertyCard } from "../data/properties.js";
-import { createViewing, formatViewingPending, getUserViewings } from "../services/viewingScheduler.js";
+import { createViewing, formatViewingPending, formatViewingConfirmed, getUserViewings, updateViewingStatus } from "../services/viewingScheduler.js";
 import config from "../config/index.js";
 
 // Base URL for serving uploaded images (needed for WhatsApp absolute URLs)
@@ -69,9 +69,8 @@ export async function handleIncomingMessage(messagePayload) {
     // GDPR consent responses
     if (interactiveId === "consent_accept") {
       await setConsent(from, true);
-      await updateState(from, "ACTIVE");
-      await sendTextMessage(from, "Thank you! 🙏 I'm happy to assist you. How can I help you find your perfect home today?");
-      setTimeout(() => sendMainMenu(from), 1500);
+      await updateState(from, "AWAITING_NAME");
+      await sendTextMessage(from, "Thank you for your consent! 🙏\n\nBefore we proceed, may I have your name, please?");
       return;
     }
     if (interactiveId === "consent_decline") {
@@ -96,6 +95,9 @@ export async function handleIncomingMessage(messagePayload) {
       const propertyId = interactiveId.replace("schedule_", "");
       const property = await getPropertyById(propertyId);
       const propertyName = property?.name || "a property";
+      // Set scheduling flag to suppress duplicate property buttons
+      session.metadata = session.metadata || {};
+      session.metadata.scheduling = propertyId;
       await addMessage(from, "user", `I'd like to schedule a viewing for ${propertyName}`);
       const aiResult = await generateAIResponseFull(from, session);
       if (aiResult.leadData) await captureLead(from, aiResult.leadData);
@@ -137,6 +139,27 @@ export async function handleIncomingMessage(messagePayload) {
   // If consent was asked but not yet given, remind them
   if (!session.consentGiven) {
     await sendConsentRequest(from);
+    return;
+  }
+
+  // --- Name collection (after consent, before main conversation) ---
+  if (session.state === "AWAITING_NAME") {
+    let name = userText.trim();
+    // Extract name from phrases like "My name is John" or "I'm John"
+    const nameMatch = name.match(/(?:my name is|i'm|i am|it's|call me)\s+(.+)/i);
+    if (nameMatch) name = nameMatch[1].trim();
+    name = name.replace(/[.!,]+$/, '').trim(); // clean trailing punctuation
+
+    if (name.length > 0 && name.length < 100 && !name.startsWith('/')) {
+      await updateLeadData(from, { name });
+      await updateState(from, "ACTIVE");
+      await addMessage(from, "user", userText);
+      await addMessage(from, "assistant", `Welcome, ${name}! How may I assist you today?`);
+      await sendTextMessage(from, `Welcome, *${name}*! 🌟\n\nIt's a pleasure to have you here. How may I assist you in finding your perfect home today?`);
+      setTimeout(() => sendMainMenu(from), 1500);
+    } else {
+      await sendTextMessage(from, "I'd love to address you properly. Could you please share your name?");
+    }
     return;
   }
 
@@ -186,8 +209,14 @@ export async function handleIncomingMessage(messagePayload) {
 
   // Send media + text reply (this is the user-facing latency)
   const skipMedia = !!aiResult.scheduleViewing;
+  const isScheduling = !!session.metadata?.scheduling;
+  const lastButtons = session.metadata?.lastPropertyButtons;
+  const recentlyShown = lastButtons &&
+    lastButtons.propertyId === aiResult.showProperty &&
+    (Date.now() - lastButtons.time) < 5 * 60 * 1000;
+  const suppressPropertyUI = skipMedia || isScheduling || recentlyShown;
 
-  if (aiResult.showProperty && !skipMedia) {
+  if (aiResult.showProperty && !suppressPropertyUI) {
     await sendPropertyImages(from, aiResult.showProperty);
   }
 
@@ -197,12 +226,14 @@ export async function handleIncomingMessage(messagePayload) {
 
   // --- Post-reply work (user already has the message) ---
 
-  if (aiResult.showProperty && !skipMedia) {
+  if (aiResult.showProperty && !suppressPropertyUI) {
     const prop = await getPropertyById(aiResult.showProperty);
     if (prop) {
+      session.metadata = session.metadata || {};
+      session.metadata.lastPropertyButtons = { propertyId: aiResult.showProperty, time: Date.now() };
       await sendButtonMessage(
         from,
-        `Interested in *${prop.name}*?`,
+        `What would you like to do?`,
         [
           { id: `schedule_${prop.id}`, title: "Schedule Visit" },
           { id: "view_properties", title: "More Properties" },
@@ -451,7 +482,7 @@ async function sendPropertyDetail(to, propertyId) {
   // Send action buttons
   await sendButtonMessage(
     to,
-    `Interested in *${property.name}*?`,
+    `What would you like to do?`,
     [
       { id: `schedule_${property.id}`, title: "Schedule Visit" },
       { id: "view_properties", title: "More Properties" },
@@ -472,9 +503,9 @@ async function handleViewingSchedule(to, scheduleData) {
     propertyName: scheduleData.propertyName || "Not specified",
     preferredDate: scheduleData.preferredDate || "To be confirmed",
     preferredTime: scheduleData.preferredTime || "To be confirmed",
-    name: scheduleData.name || session.leadData.name || "Not provided",
+    name: scheduleData.name || session.leadData?.name || "Not provided",
     phone: to,
-    email: session.leadData.email || "Not provided",
+    email: session.leadData?.email || "Not provided",
     notes: scheduleData.notes || "",
   });
 
@@ -484,10 +515,27 @@ async function handleViewingSchedule(to, scheduleData) {
     return;
   }
 
-  // Send pending acknowledgment (NOT confirmed — admin must confirm from dashboard)
+  // Clear scheduling flag
+  session.metadata = session.metadata || {};
+  session.metadata.scheduling = null;
+
+  // Send pending acknowledgment
   setTimeout(async () => {
     await sendTextMessage(to, formatViewingPending(viewing));
   }, 1500);
+
+  // Auto-confirm viewing after 10 seconds and notify customer
+  setTimeout(async () => {
+    try {
+      const confirmed = await updateViewingStatus(viewing.viewingId, "CONFIRMED");
+      if (confirmed) {
+        await sendTextMessage(to, formatViewingConfirmed(confirmed));
+        console.log(`[Viewing] Auto-confirmed ${viewing.viewingId} for ${to}`);
+      }
+    } catch (err) {
+      console.error(`[Viewing] Auto-confirm failed for ${viewing.viewingId}:`, err.message);
+    }
+  }, 10000);
 }
 
 /**
