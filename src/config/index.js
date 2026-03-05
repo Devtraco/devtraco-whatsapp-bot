@@ -49,6 +49,14 @@ const config = {
     cold: 0,
   },
 
+  // Admin dashboard authentication
+  admin: {
+    username: process.env.ADMIN_USERNAME || "admin",
+    password: process.env.ADMIN_PASSWORD || "devtraco2026",
+    jwtSecret: process.env.JWT_SECRET || "devtraco-bot-secret-" + (process.env.WHATSAPP_TOKEN || "").slice(-8),
+    tokenExpiry: 24 * 60 * 60 * 1000, // 24 hours
+  },
+
   // Microsoft Dynamics 365 CRM
   dynamics: {
     enabled: !!(process.env.DYNAMICS_ORG_URL && process.env.DYNAMICS_CLIENT_ID),
@@ -62,12 +70,17 @@ const config = {
   company: {
     name: "Devtraco Plus",
     industry: "Real Estate Development",
-    description: "Devtraco Plus is a premier real estate developer in Ghana, delivering a new generation of signature homes — luxury apartments, townhouses, and hotel investment properties across Accra's most prestigious neighborhoods.",
+    description:
+      "Devtraco Plus is an industry leading real estate developer that has successfully created a unique niche for its exclusive premium quality housing units in prime areas of Accra, Ghana. Carved out of the well-known echelons of the Devtraco brand, our company promises nothing but excellence in delivery and service. All our developments possess a signature style and character, expertly designed to effectively function with modern finishings, and built with materials that reflect our commitment to quality. On offer are suites, studios, 1-2-3 bedroom apartments, and 5 bedroom townhouses for sale and rent in Accra, Ghana.",
     website: "https://devtracoplus.com",
-    phone: "+233 (0) 302 798 692",
-    cellPhone: "+233 (0) 270 000 004",
+    phone: "+233270000004",           // Office contact
+    escalationWhatsApp: "+233302798692", // Escalation WhatsApp
+    cellPhone: "+233270000004",
     email: "info@devtracoplus.com",
     address: "No. 8B, Sir Arku Korsah Road, Airport Residential Area, Accra, Ghana",
+    tone: "premium",
+    businessHours: "Monday – Friday, 8:00 AM – 5:00 PM",
+    brandColors: { primary: "#000000", secondary: "#FFFFFF", accent: "Corporate Gold" },
   },
 };
 

@@ -537,9 +537,126 @@
       .tabs { overflow-x: auto; white-space: nowrap; }
       .tab { padding: 10px 14px; }
     }
+
+    /* ---- LOGIN SCREEN ---- */
+    .login-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--accent);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .login-overlay.hidden { display: none; }
+    .login-card {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 40px 36px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .login-card .logo-lg {
+      width: 48px;
+      height: 48px;
+      background: var(--brand);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: #fff;
+      font-size: 22px;
+      margin: 0 auto 16px;
+    }
+    .login-card h2 {
+      text-align: center;
+      font-size: 20px;
+      margin-bottom: 4px;
+    }
+    .login-card .subtitle {
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 13px;
+      margin-bottom: 28px;
+    }
+    .login-card label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+    .login-card input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-family: inherit;
+      margin-bottom: 16px;
+      transition: border-color 0.15s;
+    }
+    .login-card input:focus {
+      outline: none;
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(13,148,136,0.1);
+    }
+    .login-card .btn-login {
+      width: 100%;
+      padding: 11px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .login-card .btn-login:hover { background: var(--accent-hover); }
+    .login-card .btn-login:disabled { opacity: 0.5; cursor: not-allowed; }
+    .login-error {
+      color: var(--danger);
+      font-size: 13px;
+      text-align: center;
+      margin-bottom: 12px;
+      min-height: 18px;
+    }
+    .nav-logout {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #9ca3af;
+      padding: 5px 12px;
+      border-radius: var(--radius);
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      margin-left: 16px;
+      transition: all 0.15s;
+    }
+    .nav-logout:hover { color: #fff; border-color: rgba(255,255,255,0.4); }
   </style>
 </head>
 <body>
+
+<!-- LOGIN OVERLAY -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-card">
+    <div class="logo-lg">D</div>
+    <h2>Admin Dashboard</h2>
+    <p class="subtitle">Devtraco Plus &middot; Sign in to continue</p>
+    <form id="loginForm" onsubmit="handleLogin(event)">
+      <label for="loginUser">Username</label>
+      <input type="text" id="loginUser" placeholder="Enter username" autocomplete="username" required>
+      <label for="loginPass">Password</label>
+      <input type="password" id="loginPass" placeholder="Enter password" autocomplete="current-password" required>
+      <div class="login-error" id="loginError"></div>
+      <button type="submit" class="btn-login" id="loginBtn">Sign In</button>
+    </form>
+  </div>
+</div>
 
 <nav class="navbar">
   <div class="navbar-brand">
@@ -549,6 +666,7 @@
   <div class="nav-status">
     <div class="status-dot live" id="statusDot"></div>
     <span id="serverStatus">Connecting...</span>
+    <button class="nav-logout" onclick="handleLogout()">Sign Out</button>
   </div>
 </nav>
 
@@ -856,11 +974,94 @@
   let allLeads = [];
   let leadPieChart = null;
   let leadBarChart = null;
+  let authToken = localStorage.getItem('devtraco_admin_token');
+
+  // ========== AUTH ==========
+  function authHeaders() {
+    return { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' };
+  }
+
+  async function authFetch(url, opts = {}) {
+    const headers = { ...authHeaders(), ...(opts.headers || {}) };
+    const res = await fetch(url, { ...opts, headers });
+    if (res.status === 401) {
+      handleLogout();
+      throw new Error('Session expired');
+    }
+    return res;
+  }
+
+  // For multipart uploads (don't set Content-Type — let browser set boundary)
+  async function authFetchMultipart(url, opts = {}) {
+    const headers = { 'Authorization': `Bearer ${authToken}`, ...(opts.headers || {}) };
+    const res = await fetch(url, { ...opts, headers });
+    if (res.status === 401) {
+      handleLogout();
+      throw new Error('Session expired');
+    }
+    return res;
+  }
+
+  async function handleLogin(event) {
+    event.preventDefault();
+    const btn = document.getElementById('loginBtn');
+    const errEl = document.getElementById('loginError');
+    errEl.textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'Signing in...';
+
+    try {
+      const res = await fetch(`${API}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('loginUser').value,
+          password: document.getElementById('loginPass').value,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        errEl.textContent = data.error || 'Invalid credentials';
+        return;
+      }
+      authToken = data.token;
+      localStorage.setItem('devtraco_admin_token', data.token);
+      document.getElementById('loginOverlay').classList.add('hidden');
+      refreshAll();
+      toggleAutoRefresh();
+    } catch (err) {
+      errEl.textContent = 'Connection failed. Try again.';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+    }
+  }
+
+  function handleLogout() {
+    authToken = null;
+    localStorage.removeItem('devtraco_admin_token');
+    document.getElementById('loginOverlay').classList.remove('hidden');
+    if (autoRefreshInterval) {
+      clearInterval(autoRefreshInterval);
+      autoRefreshInterval = null;
+    }
+  }
+
+  function checkAuth() {
+    if (!authToken) {
+      document.getElementById('loginOverlay').classList.remove('hidden');
+      return false;
+    }
+    document.getElementById('loginOverlay').classList.add('hidden');
+    return true;
+  }
 
   // ========== INIT ==========
   document.addEventListener('DOMContentLoaded', () => {
-    refreshAll();
-    toggleAutoRefresh();
+    if (checkAuth()) {
+      refreshAll();
+      toggleAutoRefresh();
+    }
   });
 
   // ========== TABS ==========
@@ -881,9 +1082,9 @@
   async function refreshAll() {
     try {
       const [statsRes, leadsRes, viewingsRes] = await Promise.all([
-        fetch(`${API}/stats`).then(r => r.json()),
-        fetch(`${API}/leads`).then(r => r.json()),
-        fetch(`${API}/viewings`).then(r => r.json()),
+        authFetch(`${API}/stats`).then(r => r.json()),
+        authFetch(`${API}/leads`).then(r => r.json()),
+        authFetch(`${API}/viewings`).then(r => r.json()),
       ]);
 
       renderStats(statsRes, leadsRes, viewingsRes);
@@ -1004,7 +1205,7 @@
   // ========== LEADS ==========
   async function refreshLeads() {
     try {
-      const data = await fetch(`${API}/leads`).then(r => r.json());
+      const data = await authFetch(`${API}/leads`).then(r => r.json());
       allLeads = data.leads || [];
       document.getElementById('leadCount').textContent = `${data.count} leads`;
       renderLeadsTable(allLeads);
@@ -1044,7 +1245,7 @@
   // ========== CONVERSATIONS LIST ==========
   async function refreshConvoList() {
     try {
-      const data = await fetch(`${API}/conversations`).then(r => r.json());
+      const data = await authFetch(`${API}/conversations`).then(r => r.json());
       const tbody = document.getElementById('convoListTable');
       document.getElementById('convoCount').textContent = `${data.count} chats`;
 
@@ -1093,7 +1294,7 @@
     container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
 
     try {
-      const data = await fetch(`${API}/conversations/${phone}`).then(r => {
+      const data = await authFetch(`${API}/conversations/${phone}`).then(r => {
         if (!r.ok) throw new Error('Not found');
         return r.json();
       });
@@ -1122,7 +1323,7 @@
   // ========== VIEWINGS ==========
   async function refreshViewings() {
     try {
-      const data = await fetch(`${API}/viewings`).then(r => r.json());
+      const data = await authFetch(`${API}/viewings`).then(r => r.json());
       const tbody = document.getElementById('viewingsTable');
 
       if (data.viewings.length === 0) {
@@ -1152,7 +1353,7 @@
 
   async function updateViewing(id, status) {
     try {
-      await fetch(`${API}/viewings/${id}`, {
+      await authFetch(`${API}/viewings/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
@@ -1164,7 +1365,7 @@
   // ========== PROPERTIES ==========
   async function refreshProperties() {
     try {
-      const data = await fetch(`${API}/properties`).then(r => r.json());
+      const data = await authFetch(`${API}/properties`).then(r => r.json());
       const tbody = document.getElementById('propertiesTable');
       document.getElementById('propertyCount').textContent = `${data.properties.length} properties`;
 
@@ -1260,13 +1461,13 @@
     try {
       let res;
       if (editId) {
-        res = await fetch(`${API}/properties/${editId}`, {
+        res = await authFetch(`${API}/properties/${editId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
       } else {
-        res = await fetch(`${API}/properties`, {
+        res = await authFetch(`${API}/properties`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -1299,7 +1500,7 @@
     const formData = new FormData();
     for (let i = 0; i < files.length; i++) formData.append('images', files[i]);
     try {
-      const res = await fetch(`${API}/properties/${propertyId}/images`, { method: 'POST', body: formData });
+      const res = await authFetchMultipart(`${API}/properties/${propertyId}/images`, { method: 'POST', body: formData });
       if (!res.ok) {
         const err = await res.json();
         alert('Property saved but image upload failed: ' + err.error);
@@ -1312,8 +1513,8 @@
   async function openMediaManager(propertyId) {
     try {
       const [imgData, vidData] = await Promise.all([
-        fetch(`${API}/properties/${propertyId}/images`).then(r => r.json()),
-        fetch(`${API}/properties/${propertyId}/videos`).then(r => r.json()),
+        authFetch(`${API}/properties/${propertyId}/images`).then(r => r.json()),
+        authFetch(`${API}/properties/${propertyId}/videos`).then(r => r.json()),
       ]);
       const modal = document.getElementById('imageModal');
       const content = document.getElementById('imageModalContent');
@@ -1374,7 +1575,7 @@
   async function deleteImage(imageId, propertyId) {
     if (!confirm('Delete this image?')) return;
     try {
-      await fetch(`${API}/images/${imageId}`, { method: 'DELETE' });
+      await authFetch(`${API}/images/${imageId}`, { method: 'DELETE' });
       openMediaManager(propertyId);
     } catch (err) { alert('Failed to delete: ' + err.message); }
   }
@@ -1389,7 +1590,7 @@
   async function deleteProperty(propertyId) {
     if (!confirm('Delete this property? This action cannot be undone.')) return;
     try {
-      const res = await fetch(`${API}/properties/${propertyId}`, { method: 'DELETE' });
+      const res = await authFetch(`${API}/properties/${propertyId}`, { method: 'DELETE' });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Delete failed');
@@ -1405,7 +1606,7 @@
     const formData = new FormData();
     for (let i = 0; i < files.length; i++) formData.append('videos', files[i]);
     try {
-      const res = await fetch(`${API}/properties/${propertyId}/videos`, { method: 'POST', body: formData });
+      const res = await authFetchMultipart(`${API}/properties/${propertyId}/videos`, { method: 'POST', body: formData });
       if (!res.ok) {
         const err = await res.json();
         alert('Property saved but video upload failed: ' + err.error);
@@ -1418,7 +1619,7 @@
   async function deleteVideo(videoId, propertyId) {
     if (!confirm('Delete this video?')) return;
     try {
-      await fetch(`${API}/videos/${videoId}`, { method: 'DELETE' });
+      await authFetch(`${API}/videos/${videoId}`, { method: 'DELETE' });
       openMediaManager(propertyId);
     } catch (err) { alert('Failed to delete: ' + err.message); }
   }
@@ -1440,7 +1641,7 @@
   // ========== CRM SYNC ==========
   async function refreshCRM() {
     try {
-      const data = await fetch(`${API}/crm/stats`).then(r => r.json());
+      const data = await authFetch(`${API}/crm/stats`).then(r => r.json());
       renderCRMStats(data);
       renderCRMConfig(data);
       renderCRMLog(data.recentLog || []);

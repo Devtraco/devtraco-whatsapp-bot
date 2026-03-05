@@ -254,7 +254,7 @@ async function generateAIResponseFull(from, session) {
 async function sendConsentRequest(to) {
   await sendTextMessage(
     to,
-    `👋 *Welcome to Devtraco Plus!*\n\nI'm your AI property assistant. Before we begin, I'd like to let you know:\n\n📋 We collect basic information (name, email, preferences) to provide personalized property recommendations and improve your experience.\n\n🔒 Your data is secure and will only be used for property-related communication. You can request data deletion anytime.\n\nDo you consent to proceed?`
+    `👋 *Welcome to Devtraco Plus!*\n\nI'm your dedicated property assistant, here to help you discover premium residences across Accra's finest neighbourhoods.\n\nBefore we begin, a note on your privacy:\n\n📋 We may collect your name, contact information, and preferences to provide you with a tailored property experience.\n\n🔒 Your information is secure. We have suitable physical, electronic, and managerial procedures in place to safeguard your data. We will not sell, distribute, or lease your personal information to third parties unless required by law.\n\nFor our full privacy policy, please visit devtracoplus.com or email info@devtracoplus.com.\n\nDo you consent to proceed?`
   );
 
   await sendButtonMessage(
@@ -478,6 +478,12 @@ async function handleViewingSchedule(to, scheduleData) {
     notes: scheduleData.notes || "",
   });
 
+  // Handle 24-hour advance booking rejection
+  if (viewing.rejected) {
+    await sendTextMessage(to, `⚠️ ${viewing.reason}`);
+    return;
+  }
+
   // Send pending acknowledgment (NOT confirmed — admin must confirm from dashboard)
   setTimeout(async () => {
     await sendTextMessage(to, formatViewingPending(viewing));
@@ -566,7 +572,7 @@ async function handleEscalation(to, reason) {
   await updateState(to, "ESCALATED");
   await sendTextMessage(
     to,
-    `👤 *Connecting you with a team member*\n\nI'm transferring you to one of our property consultants who'll be able to help you further.\n\n📞 You can also reach us directly:\n• Office: ${config.company.phone}\n• Cell: ${config.company.cellPhone}\n• Email: ${config.company.email}\n\nA team member will respond shortly. Thank you for your patience! 🙏`
+    `👤 *Connecting you with a team member*\n\nI'm transferring you to one of our property consultants who'll be able to assist you further.\n\n📞 You can also reach us directly:\n• Office: ${config.company.phone}\n• WhatsApp: ${config.company.escalationWhatsApp}\n• Email: ${config.company.email}\n\n🕒 Business Hours: ${config.company.businessHours}\n\nA team member will respond shortly. Thank you for your patience! 🙏`
   );
   console.log(`[Escalation] ${to} — Reason: ${reason}`);
 }

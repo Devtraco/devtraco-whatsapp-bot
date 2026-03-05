@@ -7,6 +7,7 @@ import { connectDB } from "./src/db/connection.js";
 import { seedProperties } from "./src/data/properties.js";
 import webhookRoutes from "./src/routes/webhook.js";
 import apiRoutes from "./src/routes/api.js";
+import { authMiddleware, loginHandler } from "./src/middleware/auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,9 +47,14 @@ app.use((req, res, next) => {
 
 // ---------- Routes ----------
 app.use(webhookRoutes);
-app.use("/api", apiRoutes);
 
-// Dashboard
+// Auth endpoint (public)
+app.post("/api/auth/login", loginHandler);
+
+// Protect all other /api routes
+app.use("/api", authMiddleware, apiRoutes);
+
+// Dashboard (serves HTML — auth checked client-side via token)
 app.get("/dashboard", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "dashboard.html"));
 });

@@ -21,7 +21,8 @@ export async function getSession(userId) {
     const elapsed = (Date.now() - session.lastActivity) / 1000 / 60;
     if (elapsed > config.session.ttlMinutes) {
       cache.delete(userId);
-      return await createSession(userId);
+      // Reset conversation state but PRESERVE history and lead data
+      return await resetSession(userId, session);
     }
     session.lastActivity = Date.now();
     return session;
@@ -35,7 +36,8 @@ export async function getSession(userId) {
         session = docToSession(doc);
         const elapsed = (Date.now() - session.lastActivity) / 1000 / 60;
         if (elapsed > config.session.ttlMinutes) {
-          return await createSession(userId);
+          // Reset conversation state but PRESERVE history and lead data
+          return await resetSession(userId, session);
         }
         session.lastActivity = Date.now();
         cache.set(userId, session);
@@ -47,6 +49,28 @@ export async function getSession(userId) {
   }
 
   return await createSession(userId);
+}
+
+/**
+ * Read-only session retrieval for dashboard/admin — no TTL enforcement,
+ * no session reset. Returns null if session doesn't exist.
+ */
+export async function getSessionReadOnly(userId) {
+  // Check cache first
+  const cached = cache.get(userId);
+  if (cached) return cached;
+
+  // Try loading from MongoDB without TTL check
+  if (isDBConnected()) {
+    try {
+      const doc = await SessionModel.findOne({ userId }).lean();
+      if (doc) return docToSession(doc);
+    } catch (err) {
+      console.error("[Session] DB readOnly load failed:", err.message);
+    }
+  }
+
+  return null;
 }
 
 export async function createSession(userId) {
@@ -70,6 +94,30 @@ export async function createSession(userId) {
   };
   cache.set(userId, session);
   persistSession(session); // fire-and-forget
+  return session;
+}
+
+/**
+ * Reset a session after TTL expiry — clears conversation state
+ * but PRESERVES history and lead data for dashboard/CRM purposes.
+ */
+async function resetSession(userId, oldSession) {
+  const session = {
+    userId,
+    history: oldSession?.history || [],         // keep full history
+    state: "GREETING",                          // reset conversation flow
+    leadData: oldSession?.leadData || {
+      name: null, email: null, phone: userId,
+      budget: null, propertyInterest: null,
+      preferredLocation: null, timeline: null,
+    },
+    leadScore: oldSession?.leadScore || 0,       // keep score
+    lastActivity: Date.now(),
+    consentGiven: oldSession?.consentGiven || false,
+    metadata: oldSession?.metadata || {},
+  };
+  cache.set(userId, session);
+  persistSession(session);
   return session;
 }
 

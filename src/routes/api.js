@@ -5,6 +5,7 @@ import {
   getAllSessions,
   getActiveSessionCount,
   getSession,
+  getSessionReadOnly,
 } from "../services/session.js";
 import { formatLeadReport, getLeadTier } from "../services/leadCapture.js";
 import {
@@ -107,7 +108,7 @@ router.get("/leads", async (req, res) => {
  * GET /api/leads/:userId — Get a specific lead
  */
 router.get("/leads/:userId", async (req, res) => {
-  const session = await getSession(req.params.userId);
+  const session = await getSessionReadOnly(req.params.userId);
   if (!session || session.leadScore === 0) {
     return res.status(404).json({ error: "Lead not found" });
   }
@@ -135,7 +136,7 @@ router.get("/conversations", async (req, res) => {
  * GET /api/conversations/:userId — Get conversation history
  */
 router.get("/conversations/:userId", async (req, res) => {
-  const session = await getSession(req.params.userId);
+  const session = await getSessionReadOnly(req.params.userId);
   if (!session) {
     return res.status(404).json({ error: "Conversation not found" });
   }

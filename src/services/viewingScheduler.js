@@ -28,6 +28,19 @@ async function getNextId() {
 // ───────── CRUD ─────────
 
 export async function createViewing({ userId, propertyId, propertyName, preferredDate, preferredTime, name, phone, email, notes }) {
+  // Validate 24-hour advance booking rule
+  if (preferredDate && preferredDate !== "To be confirmed") {
+    const requestedDate = new Date(preferredDate);
+    const minDate = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now
+    if (!isNaN(requestedDate.getTime()) && requestedDate < minDate) {
+      console.log(`[Viewing] Rejected — date ${preferredDate} is less than 24 hours away`);
+      return {
+        rejected: true,
+        reason: "All property viewings must be scheduled at least 24 hours in advance. Please choose a later date.",
+      };
+    }
+  }
+
   const id = await getNextId();
   const viewing = {
     viewingId: id,
@@ -144,7 +157,13 @@ export function formatViewingPending(viewing) {
     `🕐 Preferred Time: ${viewing.preferredTime}`,
     `👤 Name: ${viewing.name}`,
     ``,
-    `Your request is being reviewed by our team. You will receive a confirmation message once it is approved.`,
+    `Your request is being reviewed by our team. A viewing is only confirmed once you receive a confirmation call/message and the assigned Sales Executive's contact details.`,
+    ``,
+    `📌 *Please Note:*`,
+    `• Arrive on time — a 15-minute grace period applies`,
+    `• Provide at least 3 hours' notice for cancellations or rescheduling`,
+    `• You may be asked to present valid ID`,
+    `• Please wear appropriate footwear on site`,
     ``,
     `📍 *Office:* ${config.company.address}`,
     `📞 *Contact:* ${config.company.cellPhone}`,
