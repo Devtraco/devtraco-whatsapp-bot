@@ -41,58 +41,80 @@ const DEFAULT_PROPERTIES = [
   {
     propertyId: "the-edge",
     name: "The Edge",
-    location: "Accra",
+    location: "North Labone, Accra",
     type: "Apartments",
     bedrooms: [0, 1, 2, 3],
     priceFrom: 99000,
     currency: "USD",
-    amenities: [],
+    amenities: ["Private Parking", "Broadband/Wi-Fi", "Intercom", "Concierge", "24/7 Security", "Gym", "Rooftop Pool", "Generator", "Water Reservoir"],
     status: "Now Selling",
-    images: [],
+    images: [
+      "https://devtracoplus.com/site/assets/files/1202/660_x_371_exterior_1a.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1202/660_x_371_aerial_1.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1202/660_x_371_exterior_2a.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1202/660_x_371_pool_b_final.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1202/660_x_371_fitness_final.768x0.jpg"
+    ],
     projectUrl: "https://devtracoplus.com/projects/the-edge",
-    description: "A mixed-use development designed to promote an urban quarters where people can live and enjoy life at the same time.",
+    description: "A mixed-use development in North Labone designed to promote an urban quarters where people can live and enjoy life at the same time. Studios, 1-2-3 bedroom apartments with retail spaces at ground level.",
   },
   {
     propertyId: "nova",
     name: "NoVA",
-    location: "Accra",
+    location: "Roman Ridge, Accra",
     type: "Apartments",
     bedrooms: [0, 1, 2, 3],
     priceFrom: 141347,
     currency: "USD",
-    amenities: [],
+    amenities: ["Concierge", "Swimming Pool", "Tennis Court", "Gym", "Children's Playground", "Secure Parking", "Landscaped Gardens", "24/7 Security", "Café/Lounge", "Spa & Sauna", "Conference Centre"],
     status: "Now Selling",
-    images: [],
+    images: [
+      "https://devtracoplus.com/site/assets/files/1307/night-shot.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1307/nova-project-header-image.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1307/living-room.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1307/kitchen.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1307/roof-top.768x0.jpg"
+    ],
     projectUrl: "https://nova.devtracoplus.com",
-    description: "A mixed-use ultra modern urban lifestyle development. NoVA comes in studios, 1, 2 and 3 bedroom apartments.",
+    description: "A mixed-use ultra modern urban lifestyle development in Roman Ridge. NoVA comes in studios, 1, 2 and 3 bedroom apartments with café, spa, tennis court, and more.",
   },
   {
     propertyId: "acasia-apartments",
     name: "Acasia Apartments",
-    location: "Accra",
+    location: "Cantonments, Accra",
     type: "Apartments",
     bedrooms: [1, 2, 3],
     priceFrom: 145000,
     currency: "USD",
-    amenities: [],
+    amenities: ["Rooftop Pool (Sky Lounge)", "Gym", "24/7 Security", "Concierge", "Generator", "Water Reservoir", "Elevator", "Estate Management"],
     status: "Now Selling",
-    images: [],
+    images: [
+      "https://devtracoplus.com/site/assets/files/1081/660x371_full_view.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1081/660x371_cantonments_apartmentfinal1.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1081/660x371_apartment_roof-top_final_rev.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1081/660x371_acasia_apartment_exterior_final.768x0.jpg"
+    ],
     projectUrl: "https://devtracoplus.com/projects/acasia-apartments",
-    description: "An iconic symbol of luxury, quality and convenience for discerning homeowners in the heart of Accra.",
+    description: "An iconic symbol of luxury, quality and convenience in the heart of Cantonments. 1-3 bedroom apartments with rooftop pool (Sky Lounge) and gym.",
   },
   {
     propertyId: "avant-garde",
     name: "Avant Garde",
-    location: "Accra",
+    location: "Labone, Accra",
     type: "Apartments",
     bedrooms: [1, 2, 3],
     priceFrom: 170000,
     currency: "USD",
-    amenities: [],
+    amenities: ["Broadband/Wi-Fi", "Intercom", "Concierge", "24/7 Security", "Gym", "Pool House", "Generator", "Gated Community", "Estate Management"],
     status: "Now Selling",
-    images: [],
+    images: [
+      "https://devtracoplus.com/site/assets/files/1025/ag-6.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1025/ag-5.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1025/grid-ag-two.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1025/grid-ag-four.768x0.jpg"
+    ],
     projectUrl: "https://devtracoplus.com/projects/the-avantgarde",
-    description: "Designed to an exceptionally high standard, crafted to reflect residents' expectations of uncompromising quality and originality.",
+    description: "A collection of 20 apartments in the popular Labone area. Designed to an exceptionally high standard with 1, 2, and 3 bedroom options. Cool, contemporary, stylish.",
   },
   {
     propertyId: "henriettas-residences",
@@ -102,11 +124,16 @@ const DEFAULT_PROPERTIES = [
     bedrooms: [1, 2, 3],
     priceFrom: 245000,
     currency: "USD",
-    amenities: [],
+    amenities: ["Gym", "Swimming Pool", "Concierge", "Underground Parking", "Generator", "Water Reservoir", "High Speed Broadband", "24/7 Security", "DSTV"],
     status: "Now Selling",
-    images: [],
+    images: [
+      "https://devtracoplus.com/site/assets/files/1334/day-view.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1334/main-entrance.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1334/overhead-view-of-pool.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1334/living-area.768x0.jpg"
+    ],
     projectUrl: "https://devtracoplus.com/projects/henriettas-residences",
-    description: "Located in Cantonments with brave design features and strategic proximity to notable landmarks.",
+    description: "Luxury 1-3 bedroom apartments in Cantonments. 3 minutes to the American Embassy, 10 minutes to Kotoka International Airport. Africa & Arabia Property Awards winner.",
   },
   {
     propertyId: "forte-residences",
@@ -144,39 +171,52 @@ const DEFAULT_PROPERTIES = [
     bedrooms: [1, 2, 3],
     priceFrom: 275000,
     currency: "USD",
-    amenities: [],
+    amenities: ["Underground Parking", "Broadband/Wi-Fi", "Intercom", "Concierge", "24/7 Security", "Gym", "Pool House", "Generator", "Gated Community", "Estate Management"],
     status: "Now Selling",
-    images: [],
+    images: [
+      "https://devtracoplus.com/site/assets/files/1072/devp-24.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1072/niiyo2-copy2.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1072/3.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1072/sam_0539.768x0.jpg"
+    ],
     projectUrl: "https://devtracoplus.com/projects/the-niiyo",
-    description: "A residential oasis in Dzorwulu — the ultimate in simple and comfortable contemporary living.",
+    description: "A residential oasis in Dzorwulu with 31 signature homes. Floor-to-ceiling windows and fibre glass doors. Opposite Mmofra Children's Park, 5 mins to Accra Mall.",
   },
   {
     propertyId: "palmers-place",
     name: "Palmer's Place",
-    location: "Accra",
+    location: "Airport Residential, Accra",
     type: "Townhomes",
-    bedrooms: [3, 4],
+    bedrooms: [5],
     priceFrom: 760000,
     currency: "USD",
-    amenities: [],
+    amenities: ["Smart Home System", "Air Conditioning", "Water Purification", "Standby Generator", "Video Entry", "Fire Detectors", "Pool", "Gym"],
     status: "Limited Availability",
-    images: [],
+    images: [
+      "https://devtracoplus.com/site/assets/files/1050/dsc_0873-1.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1050/dsc_0898.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1050/1440x810-1.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1050/dsc_0875.768x0.jpg"
+    ],
     projectUrl: "https://devtracoplus.com/projects/palmers-place",
-    description: "An exclusive development of seven modern townhomes with uncompromised, first class workmanship.",
+    description: "An exclusive development of seven modern townhomes in Airport Residential. 5-bedroom, smart home system, water purification. Uncompromised first class workmanship.",
   },
   {
     propertyId: "acasia-townhomes",
     name: "Acasia Townhomes",
-    location: "Accra",
+    location: "Cantonments, Accra",
     type: "Townhomes",
-    bedrooms: [3, 4, 5],
+    bedrooms: [5],
     priceFrom: 850000,
     currency: "USD",
-    amenities: [],
+    amenities: ["Private Lap Pool", "Rooftop Pool (Sky Lounge)", "Gym", "24/7 Security", "Concierge", "Private Elevator", "Generator", "Water Reservoir", "Estate Management"],
     status: "Limited Availability",
-    images: [],
+    images: [
+      "https://devtracoplus.com/site/assets/files/1064/front-view-1.768x0.jpg",
+      "https://devtracoplus.com/site/assets/files/1064/acasia-townhouse_exterior2.768x0.jpg"
+    ],
     projectUrl: "https://devtracoplus.com/projects/acasia",
-    description: "An iconic symbol of luxury, quality and convenience for discerning homeowners in the heart of Accra.",
+    description: "First class luxury 5-bedroom townhomes in Cantonments with a private lap pool on the topmost floor of each unit. Meticulous attention to detail with the finest materials.",
   },
 ];
 
@@ -239,15 +279,42 @@ function defaultToProperty(d) {
 export async function seedProperties() {
   if (!isDBConnected()) return;
   try {
-    const count = await PropertyModel.countDocuments();
-    if (count === 0) {
-      await PropertyModel.insertMany(DEFAULT_PROPERTIES);
-      console.log(`[Properties] Seeded ${DEFAULT_PROPERTIES.length} properties into MongoDB`);
-    } else {
-      console.log(`[Properties] ${count} properties already in MongoDB`);
+    // Upsert each property — ensures images, locations, amenities stay in sync
+    let created = 0;
+    let updated = 0;
+    for (const prop of DEFAULT_PROPERTIES) {
+      const existing = await PropertyModel.findOne({ propertyId: prop.propertyId }).lean();
+      if (!existing) {
+        await PropertyModel.create(prop);
+        created++;
+      } else {
+        // Update fields that may have changed (images, location, amenities, description, etc.)
+        await PropertyModel.updateOne(
+          { propertyId: prop.propertyId },
+          {
+            $set: {
+              name: prop.name,
+              location: prop.location,
+              type: prop.type,
+              bedrooms: prop.bedrooms,
+              priceFrom: prop.priceFrom,
+              currency: prop.currency,
+              amenities: prop.amenities,
+              status: prop.status,
+              images: prop.images,
+              projectUrl: prop.projectUrl,
+              description: prop.description,
+              active: true,
+            },
+          }
+        );
+        updated++;
+      }
     }
+    const total = await PropertyModel.countDocuments({ active: true });
+    console.log(`[Properties] Synced ${DEFAULT_PROPERTIES.length} properties (${created} new, ${updated} updated, ${total} total active)`);
   } catch (err) {
-    console.error("[Properties] Seed failed:", err.message);
+    console.error("[Properties] Seed/sync failed:", err.message);
   }
 }
 
