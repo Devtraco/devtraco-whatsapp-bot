@@ -437,18 +437,22 @@ export async function handleIncomingMessage(messagePayload) {
   const suppressPropertyUI = skipMedia || isScheduling || (recentlyShown && !userExplicitlyAskedForImages) || viewingJustBooked;
 
   if (aiResult.showProperty && !suppressPropertyUI) {
-    // Send property card first, then images
+    // Send property card first
     const showProp = await getPropertyById(aiResult.showProperty);
     if (showProp) {
       const card = formatPropertyCard(showProp);
       await sendTextMessage(from, card);
     }
-    await sendPropertyImages(from, aiResult.showProperty);
   }
 
   // Skip AI's intermediate text when we're about to schedule (avoids "Let me arrange that..." before the real confirmation)
   if (!aiResult.scheduleViewing) {
     await sendTextMessage(from, aiResult.text);
+  }
+
+  // Send images AFTER text so they don't push the description down
+  if (aiResult.showProperty && !suppressPropertyUI) {
+    await sendPropertyImages(from, aiResult.showProperty);
   }
   const replySent = Date.now();
   console.log(`[Perf] Pipeline: AI=${aiDone - pipelineStart}ms | Reply=${replySent - aiDone}ms | Total=${replySent - pipelineStart}ms`);
