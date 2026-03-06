@@ -324,30 +324,7 @@ export async function handleIncomingMessage(messagePayload) {
     return;
   }
 
-  // --- Viewing confirmation interception ---
-  // When a viewing date/time was proposed and we're waiting for the client to confirm
-  if (session.metadata?.pendingViewing) {
-    const answer = userText.trim().toLowerCase();
-    const isPositive = /^(yes|yeah|yep|yh|sure|ok|okay|correct|confirmed?|that'?s?\s*(right|correct|fine|good|great|perfect)|go ahead|proceed|please|pls|book it|y)$/i.test(answer);
-    const isNegative = /^(no|nah|nope|wrong|change|cancel|not?\s*(right|correct)|different)$/i.test(answer);
-
-    if (isPositive) {
-      const pending = session.metadata.pendingViewing;
-      delete session.metadata.pendingViewing;
-      await addMessage(from, "user", userText);
-      await confirmAndCreateViewing(from, pending);
-      return;
-    }
-
-    if (isNegative) {
-      delete session.metadata.pendingViewing;
-      await addMessage(from, "user", userText);
-      await sendTextMessage(from, "No problem! Please let me know your preferred date and time, and I'll arrange a new viewing for you. 😊");
-      await addMessage(from, "assistant", "No problem! Please let me know your preferred date and time, and I'll arrange a new viewing for you.");
-      return;
-    }
-    // If unclear, fall through to AI pipeline
-  }
+  // (Viewing confirmation step removed — viewings are now booked immediately)
 
   // --- Suggested-date interception ---
   // When a viewing was rejected and the system suggested an alternative date,
@@ -445,7 +422,10 @@ export async function handleIncomingMessage(messagePayload) {
     await sendPropertyImages(from, aiResult.showProperty);
   }
 
-  await sendTextMessage(from, aiResult.text);
+  // Skip AI's intermediate text when we're about to schedule (avoids "Let me arrange that..." before the real confirmation)
+  if (!aiResult.scheduleViewing) {
+    await sendTextMessage(from, aiResult.text);
+  }
   const replySent = Date.now();
   console.log(`[Perf] Pipeline: AI=${aiDone - pipelineStart}ms | Reply=${replySent - aiDone}ms | Total=${replySent - pipelineStart}ms`);
 
@@ -838,23 +818,12 @@ async function handleViewingSchedule(to, scheduleData) {
     }
   }
 
-  const dateDisplay = formatDateNice(resolvedDate);
-  const timeDisplay = formatTimeNice(resolvedTime);
-  const propertyName = scheduleData.propertyName || "Not specified";
-  const clientName = scheduleData.name || session.leadData?.name || "Valued Client";
-
-  // Store pending viewing in session for confirmation
-  session.metadata = session.metadata || {};
-  session.metadata.pendingViewing = {
+  // Directly create the viewing — no intermediate confirmation step
+  await confirmAndCreateViewing(to, {
     ...scheduleData,
     resolvedDate,
     resolvedTime,
-  };
-
-  // Ask client to confirm
-  const confirmMsg = `${clientName}, I'd like to schedule your viewing for *${propertyName}* on *${dateDisplay}* at *${timeDisplay}*.\n\nIs that correct?`;
-  await sendTextMessage(to, confirmMsg);
-  await addMessage(to, "assistant", confirmMsg);
+  });
 }
 
 /**
@@ -915,7 +884,7 @@ async function confirmAndCreateViewing(to, pendingData) {
   await sendTextMessage(to, submissionMsg);
   await addMessage(to, "assistant", submissionMsg);
 
-  // Auto-confirm viewing after 10 seconds and notify customer
+  // Auto-confirm viewing after 3 seconds and notify customer
   setTimeout(async () => {
     try {
       const confirmed = await updateViewingStatus(viewing.viewingId, "CONFIRMED");
@@ -939,7 +908,7 @@ async function confirmAndCreateViewing(to, pendingData) {
     } catch (err) {
       console.error(`[Viewing] Auto-confirm failed for ${viewing.viewingId}:`, err.message);
     }
-  }, 10000);
+  }, 3000);
 }
 
 /**
