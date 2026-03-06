@@ -7,6 +7,7 @@ import {
   sendListMessage,
   sendImageMessage,
   sendVideoMessage,
+  sendTemplateMessage,
   markAsRead,
 } from "../services/whatsapp.js";
 import { getAllProperties, getPropertyById, formatPropertyCard } from "../data/properties.js";
@@ -44,6 +45,13 @@ export async function handleIncomingMessage(messagePayload) {
 
   // Mark as read immediately for good UX
   markAsRead(messageId);
+
+  // --- Agent detection: ignore messages from the agent number ---
+  const agentNumber = config.company.escalationWhatsApp.replace("+", "");
+  if (from === agentNumber) {
+    console.log(`[Agent] Message from agent ${from} ignored (not a customer)`);
+    return;
+  }
 
   const session = await getSession(from);
   const userText = extractUserText(type, text, interactive);
@@ -1017,8 +1025,8 @@ async function handleEscalation(to, reason) {
     const location = lead.preferredLocation || "Not provided";
 
     const agentNumber = config.company.escalationWhatsApp.replace("+", "");
-    await sendTextMessage(
-      agentNumber,
+
+    const clientInfo =
       `🔔 *New Client Escalation*\n\n` +
       `👤 *Name:* ${name}\n` +
       `📱 *Phone:* +${phone}\n` +
@@ -1027,11 +1035,19 @@ async function handleEscalation(to, reason) {
       `🏠 *Property Interest:* ${interest}\n` +
       `📍 *Preferred Location:* ${location}\n\n` +
       `📝 *Reason:* ${reason}\n\n` +
-      `Please reach out to the client as soon as possible.`
-    );
+      `Please reach out to the client as soon as possible.`;
+
+    // Try sending free-form message first (works if agent has messaged bot within 24h)
+    // If that fails, fall back to template message
+    try {
+      await sendTextMessage(agentNumber, clientInfo);
+    } catch (freeFormErr) {
+      console.log(`[Escalation] Free-form failed, trying template...`);
+      await sendTemplateMessage(agentNumber, "hello_world", "en_US");
+    }
     console.log(`[Escalation] Sent client info to agent ${agentNumber}`);
   } catch (err) {
-    console.error(`[Escalation] Failed to notify agent:`, err.message);
+    console.error(`[Escalation] Failed to notify agent:`, err.response?.data || err.message);
   }
 
   console.log(`[Escalation] ${to} — Reason: ${reason}`);

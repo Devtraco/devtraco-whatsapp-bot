@@ -11,6 +11,35 @@ export async function sendTextMessage(to, text) {
 }
 
 /**
+ * Send a template message (can reach any number, no 24-hour window needed)
+ */
+export async function sendTemplateMessage(to, templateName = "hello_world", languageCode = "en_US", components = []) {
+  const payload = {
+    messaging_product: "whatsapp",
+    to,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: languageCode },
+    },
+  };
+  if (components.length > 0) {
+    payload.template.components = components;
+  }
+  try {
+    const response = await axios.post(
+      `${whatsapp.baseUrl}/messages`,
+      payload,
+      { headers: getHeaders(), timeout: 10000 }
+    );
+    return response.data;
+  } catch (err) {
+    console.error("Template send failed:", err.response?.data || err.message);
+    throw err;
+  }
+}
+
+/**
  * Send an image message
  */
 export async function sendImageMessage(to, imageUrl, caption = "") {
