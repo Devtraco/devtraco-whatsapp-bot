@@ -5,6 +5,7 @@ import rateLimit from "express-rate-limit";
 import config from "./src/config/index.js";
 import { connectDB } from "./src/db/connection.js";
 import { seedProperties } from "./src/data/properties.js";
+import { startStatusScraper } from "./src/services/statusScraper.js";
 import webhookRoutes from "./src/routes/webhook.js";
 import apiRoutes from "./src/routes/api.js";
 import { authMiddleware, loginHandler } from "./src/middleware/auth.js";
@@ -88,6 +89,7 @@ async function start() {
   const dbConnected = await connectDB();
   if (dbConnected) {
     await seedProperties();
+    startStatusScraper();
   }
 
   app.listen(config.port, () => {

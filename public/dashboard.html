@@ -1150,7 +1150,7 @@
       <div class="stat-card">
         <div class="stat-label">Escalated</div>
         <div class="stat-value">${stats.escalated}</div>
-        <div class="stat-sub">Awaiting agent</div>
+        <div class="stat-sub">${stats.awaitingAgent || 0} awaiting &middot; ${stats.agentResponded || 0} responded</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Properties</div>
@@ -1270,20 +1270,29 @@
 
       tbody.innerHTML = data.conversations
         .sort((a, b) => new Date(b.lastActivity) - new Date(a.lastActivity))
-        .map(c => `
+        .map(c => {
+          let stateDisplay = c.state;
+          if (c.state === 'ESCALATED' && c.escalationStatus) {
+            const escColor = c.escalationStatus === 'awaiting_agent' ? '#e67e22' : '#27ae60';
+            const escLabel = c.escalationStatus === 'awaiting_agent' ? 'Awaiting Agent' : 'Agent Responded';
+            stateDisplay = `${c.state} <span style="color:${escColor};font-size:0.8em;font-weight:600;">(${escLabel})</span>`;
+          } else if (c.escalationStatus === 'responded') {
+            stateDisplay = `${c.state} <span style="color:#27ae60;font-size:0.8em;font-weight:600;">(Agent Responded)</span>`;
+          }
+          return `
           <tr>
             <td>${c.userId}</td>
             <td>${c.messageCount}</td>
             <td><strong>${c.leadScore}</strong></td>
             <td><span class="badge tier-${c.leadTier}">${c.leadTier}</span></td>
-            <td>${c.state}</td>
+            <td>${stateDisplay}</td>
             <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.lastMessage || '\u2014'}</td>
             <td style="white-space:nowrap;">
               <button class="btn btn-sm" onclick="viewChat('${c.userId}')">View</button>
               <button class="btn btn-ghost btn-sm" onclick="deleteConversation('${c.userId}')" title="Delete" style="color:var(--danger);margin-left:4px;">✕</button>
             </td>
           </tr>
-        `).join('');
+        `}).join('');
     } catch (err) { console.error('Failed to load conversations:', err); }
   }
 

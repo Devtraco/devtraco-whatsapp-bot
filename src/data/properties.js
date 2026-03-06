@@ -87,7 +87,7 @@ const DEFAULT_PROPERTIES = [
     priceFrom: 145000,
     currency: "USD",
     amenities: ["Rooftop Pool (Sky Lounge)", "Gym", "24/7 Security", "Concierge", "Generator", "Water Reservoir", "Elevator", "Estate Management"],
-    status: "Now Selling",
+    status: "Sold Out",
     images: [
       "https://devtracoplus.com/site/assets/files/1081/660x371_full_view.768x0.jpg",
       "https://devtracoplus.com/site/assets/files/1081/660x371_cantonments_apartmentfinal1.768x0.jpg",
@@ -125,7 +125,7 @@ const DEFAULT_PROPERTIES = [
     priceFrom: 245000,
     currency: "USD",
     amenities: ["Gym", "Swimming Pool", "Concierge", "Underground Parking", "Generator", "Water Reservoir", "High Speed Broadband", "24/7 Security", "DSTV"],
-    status: "Now Selling",
+    status: "Sold Out",
     images: [
       "https://devtracoplus.com/site/assets/files/1334/day-view.768x0.jpg",
       "https://devtracoplus.com/site/assets/files/1334/main-entrance.768x0.jpg",
@@ -172,7 +172,7 @@ const DEFAULT_PROPERTIES = [
     priceFrom: 275000,
     currency: "USD",
     amenities: ["Underground Parking", "Broadband/Wi-Fi", "Intercom", "Concierge", "24/7 Security", "Gym", "Pool House", "Generator", "Gated Community", "Estate Management"],
-    status: "Now Selling",
+    status: "Sold Out",
     images: [
       "https://devtracoplus.com/site/assets/files/1072/devp-24.768x0.jpg",
       "https://devtracoplus.com/site/assets/files/1072/niiyo2-copy2.768x0.jpg",
@@ -210,7 +210,7 @@ const DEFAULT_PROPERTIES = [
     priceFrom: 850000,
     currency: "USD",
     amenities: ["Private Lap Pool", "Rooftop Pool (Sky Lounge)", "Gym", "24/7 Security", "Concierge", "Private Elevator", "Generator", "Water Reservoir", "Estate Management"],
-    status: "Limited Availability",
+    status: "Sold Out",
     images: [
       "https://devtracoplus.com/site/assets/files/1064/front-view-1.768x0.jpg",
       "https://devtracoplus.com/site/assets/files/1064/acasia-townhouse_exterior2.768x0.jpg"

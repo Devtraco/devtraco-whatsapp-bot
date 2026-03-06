@@ -82,12 +82,16 @@ router.get("/stats", async (req, res) => {
 
   const totalMessages = sessions.reduce((acc, s) => acc + (s.history?.length || 0), 0);
   const escalated = sessions.filter((s) => s.state === "ESCALATED").length;
+  const awaitingAgent = sessions.filter((s) => s.state === "ESCALATED" && s.metadata?.escalation?.status === "awaiting_agent").length;
+  const agentResponded = sessions.filter((s) => s.metadata?.escalation?.status === "responded").length;
 
   res.json({
     activeSessions: await getActiveSessionCount(),
     leads,
     totalMessages,
     escalated,
+    awaitingAgent,
+    agentResponded,
     properties: properties.length,
     pendingViewings: await getPendingViewingCount(),
   });
@@ -144,6 +148,7 @@ router.get("/conversations", async (req, res) => {
     messageCount: s.history?.length || 0,
     leadScore: s.leadScore,
     leadTier: getLeadTier(s.leadScore),
+    escalationStatus: s.metadata?.escalation?.status || null,
     lastMessage: s.history?.length > 0 ? s.history[s.history.length - 1].content?.substring(0, 80) : null,
     lastActivity: s.lastActivity,
   }));

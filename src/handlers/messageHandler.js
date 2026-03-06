@@ -46,10 +46,24 @@ export async function handleIncomingMessage(messagePayload) {
   // Mark as read immediately for good UX
   markAsRead(messageId);
 
-  // --- Agent detection: ignore messages from the agent number ---
+  // --- Agent message handling ---
   const agentNumber = config.company.escalationWhatsApp.replace("+", "");
   if (from === agentNumber) {
-    console.log(`[Agent] Message from agent ${from} ignored (not a customer)`);
+    // Handle interactive button replies from the agent
+    if (type === "interactive") {
+      const interactiveId = interactive?.button_reply?.id || "";
+      if (interactiveId.startsWith("escalation_respond_")) {
+        const clientNumber = interactiveId.replace("escalation_respond_", "");
+        await handleAgentResponse(clientNumber, "responded", agentNumber);
+        return;
+      }
+      if (interactiveId.startsWith("escalation_later_")) {
+        const clientNumber = interactiveId.replace("escalation_later_", "");
+        await handleAgentResponse(clientNumber, "later", agentNumber);
+        return;
+      }
+    }
+    console.log(`[Agent] Message from agent ${from} — no action needed`);
     return;
   }
 
@@ -1008,14 +1022,23 @@ async function sendPropertyList(to) {
  */
 async function handleEscalation(to, reason) {
   await updateState(to, "ESCALATED");
+
+  // Store escalation details in client's session metadata
+  const session = await getSession(to);
+  session.metadata = session.metadata || {};
+  session.metadata.escalation = {
+    status: "awaiting_agent",
+    reason,
+    timestamp: Date.now(),
+  };
+
   await sendTextMessage(
     to,
     `👤 *Connecting you with a team member*\n\nI'm transferring you to one of our property consultants who'll be able to assist you further.\n\n📞 You can also reach us directly:\n• Call: ${config.company.phone}\n• WhatsApp: ${config.company.escalationWhatsApp}\n• Email: ${config.company.email}\n\n🕒 Business Hours: ${config.company.businessHours}\n\nA team member will respond shortly. Thank you for your patience! 🙏`
   );
 
-  // Send client details to agent via WhatsApp
+  // Send client details to agent via WhatsApp with action buttons
   try {
-    const session = await getSession(to);
     const lead = session.leadData || {};
     const name = lead.name || "Not provided";
     const phone = lead.phone || to;
@@ -1034,16 +1057,27 @@ async function handleEscalation(to, reason) {
       `💰 *Budget:* ${budget}\n` +
       `🏠 *Property Interest:* ${interest}\n` +
       `📍 *Preferred Location:* ${location}\n\n` +
-      `📝 *Reason:* ${reason}\n\n` +
-      `Please reach out to the client as soon as possible.`;
+      `📝 *Reason:* ${reason}`;
 
-    // Try sending free-form message first (works if agent has messaged bot within 24h)
+    // Try sending buttons first (works if agent has messaged bot within 24h)
     // If that fails, fall back to template message
     try {
-      await sendTextMessage(agentNumber, clientInfo);
+      await sendButtonMessage(
+        agentNumber,
+        clientInfo,
+        [
+          { id: `escalation_respond_${to}`, title: "✅ Responded" },
+          { id: `escalation_later_${to}`, title: "⏰ Later" },
+        ],
+        "Client Escalation"
+      );
     } catch (freeFormErr) {
-      console.log(`[Escalation] Free-form failed, trying template...`);
-      await sendTemplateMessage(agentNumber, "hello_world", "en_US");
+      console.log(`[Escalation] Buttons failed, trying template...`);
+      try {
+        await sendTemplateMessage(agentNumber, "hello_world", "en_US");
+      } catch (templateErr) {
+        console.error(`[Escalation] Template also failed:`, templateErr.message);
+      }
     }
     console.log(`[Escalation] Sent client info to agent ${agentNumber}`);
   } catch (err) {
@@ -1051,6 +1085,33 @@ async function handleEscalation(to, reason) {
   }
 
   console.log(`[Escalation] ${to} — Reason: ${reason}`);
+}
+
+/**
+ * Handle agent's response to an escalation (button press)
+ */
+async function handleAgentResponse(clientNumber, action, agentNumber) {
+  const session = await getSession(clientNumber);
+  session.metadata = session.metadata || {};
+
+  if (action === "responded") {
+    session.metadata.escalation = {
+      ...session.metadata.escalation,
+      status: "responded",
+      respondedAt: Date.now(),
+    };
+    await updateState(clientNumber, "ACTIVE");
+    await sendTextMessage(agentNumber, `✅ Noted! Client +${clientNumber} marked as attended to.`);
+    console.log(`[Escalation] Agent responded to client ${clientNumber}`);
+  } else {
+    // "later" — keep awaiting status
+    session.metadata.escalation = {
+      ...session.metadata.escalation,
+      status: "awaiting_agent",
+    };
+    await sendTextMessage(agentNumber, `⏰ Noted! Client +${clientNumber} is still awaiting your response.`);
+    console.log(`[Escalation] Agent deferred client ${clientNumber}`);
+  }
 }
 
 /**
