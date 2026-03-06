@@ -262,9 +262,19 @@ export async function handleIncomingMessage(messagePayload) {
   // --- Name collection (after consent, before main conversation) ---
   if (session.state === "AWAITING_NAME") {
     let name = userText.trim();
-    // Extract name from phrases like "My name is John" or "I'm John"
+    let extraMessage = null;
+
+    // Extract name from phrases like "My name is John" or "I'm John, I need..."
     const nameMatch = name.match(/(?:my name is|i'm|i am|it's|call me)\s+(.+)/i);
     if (nameMatch) name = nameMatch[1].trim();
+
+    // Separate name from additional text (e.g. "Muheeb, I need an apartment")
+    const separatorMatch = name.match(/^([^,]+?)\s*[,.]?\s*\b(i\s+(?:need|want|would|am|like|'m)|and\s+i|but\s+i|can\s+you|please|could|do\s+you|what|how|show|tell|looking|interested).+$/i);
+    if (separatorMatch) {
+      name = separatorMatch[1].trim();
+      extraMessage = userText; // Re-process the full message through AI pipeline
+    }
+
     name = name.replace(/[.!,]+$/, '').trim(); // clean trailing punctuation
 
     if (name.length > 0 && name.length < 100 && !name.startsWith('/')) {
@@ -273,7 +283,20 @@ export async function handleIncomingMessage(messagePayload) {
       await addMessage(from, "user", userText);
       await addMessage(from, "assistant", `Welcome, ${name}! How may I assist you today?`);
       await sendTextMessage(from, `Welcome, *${name}*! 🌟\n\nIt's a pleasure to have you here. How may I assist you in finding your perfect home today?`);
-      setTimeout(() => sendMainMenu(from), 1500);
+
+      // If user included a request alongside their name, process it now
+      if (extraMessage) {
+        // Small delay so welcome message arrives first, then process the request
+        setTimeout(async () => {
+          try {
+            await handleIncomingMessage({ from, text: extraMessage, type: "text" });
+          } catch (err) {
+            console.error("[Name+Request] Error processing extra message:", err.message);
+          }
+        }, 2000);
+      } else {
+        setTimeout(() => sendMainMenu(from), 1500);
+      }
     } else {
       await sendTextMessage(from, "I'd love to address you properly. Could you please share your name?");
     }
