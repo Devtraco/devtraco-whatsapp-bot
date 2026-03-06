@@ -826,8 +826,16 @@
   <!-- ============ PROPERTIES ============ -->
   <div id="tab-properties" class="tab-content">
 
-    <!-- Property Form -->
-    <div class="card" id="propertyFormCard">
+    <!-- Add Property Toggle Button -->
+    <div style="margin-bottom:16px;">
+      <button class="btn btn-primary" id="addPropertyToggleBtn" onclick="togglePropertyForm()" style="display:inline-flex;align-items:center;gap:8px;padding:10px 24px;font-size:15px;font-weight:600;border-radius:var(--radius);box-shadow:var(--shadow);">
+        <span id="addPropertyBtnIcon" style="font-size:18px;line-height:1;">＋</span>
+        <span id="addPropertyBtnText">Add New Property</span>
+      </button>
+    </div>
+
+    <!-- Property Form (hidden by default) -->
+    <div class="card" id="propertyFormCard" style="display:none;">
       <div class="card-header">
         <h3 class="card-title" id="propertyFormTitle">Add New Property</h3>
         <button class="btn btn-sm hidden" id="cancelEditBtn" onclick="resetPropertyForm()">Cancel</button>
@@ -1393,7 +1401,7 @@
     try {
       await authFetch(`${API}/conversations`, { method: 'DELETE' });
       refreshConvoList();
-      refreshStats();
+      refreshAll();
       document.getElementById('chatContainer').innerHTML = '<div class="chat-empty">All conversations cleared</div>';
     } catch (err) { alert('Failed to clear conversations: ' + err.message); }
   }
@@ -1403,7 +1411,7 @@
     try {
       await authFetch(`${API}/conversations/${userId}`, { method: 'DELETE' });
       refreshConvoList();
-      refreshStats();
+      refreshAll();
     } catch (err) { alert('Failed to delete conversation: ' + err.message); }
   }
 
@@ -1443,6 +1451,23 @@
     } catch (err) { console.error('Failed to load properties:', err); }
   }
 
+  function togglePropertyForm() {
+    const card = document.getElementById('propertyFormCard');
+    const btnIcon = document.getElementById('addPropertyBtnIcon');
+    const btnText = document.getElementById('addPropertyBtnText');
+    if (card.style.display === 'none') {
+      card.style.display = '';
+      btnIcon.textContent = '\u2212';
+      btnText.textContent = 'Close Form';
+      card.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      card.style.display = 'none';
+      btnIcon.textContent = '\uff0b';
+      btnText.textContent = 'Add New Property';
+      resetPropertyForm();
+    }
+  }
+
   function resetPropertyForm() {
     document.getElementById('propertyForm').reset();
     document.getElementById('pf_editId').value = '';
@@ -1479,7 +1504,12 @@
       preview.innerHTML = '';
     }
 
-    document.getElementById('propertyFormCard').scrollIntoView({ behavior: 'smooth' });
+    // Show the form and update toggle button
+    const card = document.getElementById('propertyFormCard');
+    card.style.display = '';
+    document.getElementById('addPropertyBtnIcon').textContent = '\u2212';
+    document.getElementById('addPropertyBtnText').textContent = 'Close Form';
+    card.scrollIntoView({ behavior: 'smooth' });
   }
 
   async function submitProperty(e) {
@@ -1535,6 +1565,10 @@
       }
 
       resetPropertyForm();
+      // Collapse the form after successful save
+      document.getElementById('propertyFormCard').style.display = 'none';
+      document.getElementById('addPropertyBtnIcon').textContent = '\uff0b';
+      document.getElementById('addPropertyBtnText').textContent = 'Add New Property';
       refreshProperties();
     } catch (err) {
       alert('Error: ' + err.message);

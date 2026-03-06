@@ -425,7 +425,7 @@ function docToViewing(doc) {
 /**
  * Get the next business day (Mon-Fri) that is at least 24h away.
  */
-function getNextBusinessDay() {
+export function getNextBusinessDay() {
   const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
   while (d.getDay() === 0 || d.getDay() === 6) {
     d.setDate(d.getDate() + 1);

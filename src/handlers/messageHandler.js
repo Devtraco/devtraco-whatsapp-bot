@@ -10,7 +10,7 @@ import {
   markAsRead,
 } from "../services/whatsapp.js";
 import { getAllProperties, getPropertyById, formatPropertyCard } from "../data/properties.js";
-import { createViewing, formatViewingPending, formatViewingConfirmed, getUserViewings, updateViewingStatus, resolveDate, resolveTime, formatDateNice, formatTimeNice, getAvailableSlots } from "../services/viewingScheduler.js";
+import { createViewing, formatViewingPending, formatViewingConfirmed, getUserViewings, updateViewingStatus, resolveDate, resolveTime, formatDateNice, formatTimeNice, getAvailableSlots, validateBusinessHours, getNextBusinessDay } from "../services/viewingScheduler.js";
 import { sendViewingConfirmationEmail } from "../services/email.js";
 import config from "../config/index.js";
 
@@ -87,12 +87,24 @@ export async function handleIncomingMessage(messagePayload) {
     // GDPR consent responses
     if (interactiveId === "consent_accept") {
       await setConsent(from, true);
-      await updateState(from, "AWAITING_NAME");
-      await sendTextMessage(from, "Thank you for your consent! 🙏\n\nBefore we proceed, may I have your name, please?");
+      session.metadata = session.metadata || {};
+      session.metadata.consentDeclined = false;
+      // If name already collected (user was in limited mode), go straight to ACTIVE
+      if (session.leadData?.name) {
+        await updateState(from, "ACTIVE");
+        await sendTextMessage(from, `Thank you for your consent, *${session.leadData.name}*! 🙏\n\nYou now have full access. How may I assist you today?`);
+        setTimeout(() => sendMainMenu(from), 1500);
+      } else {
+        await updateState(from, "AWAITING_NAME");
+        await sendTextMessage(from, "Thank you for your consent! 🙏\n\nBefore we proceed, may I have your name, please?");
+      }
       return;
     }
     if (interactiveId === "consent_decline") {
-      await sendTextMessage(from, `No problem! If you change your mind, just send us a message anytime.\n\nYou can also reach us directly:\n📞 ${config.company.cellPhone}\n📧 ${config.company.email}`);
+      session.metadata = session.metadata || {};
+      session.metadata.consentDeclined = true;
+      await updateState(from, "AWAITING_NAME");
+      await sendTextMessage(from, `No problem at all! Your privacy is important to us. 🔒\n\nYou can still browse our properties and learn about what we offer. However, please note that scheduling viewings and personalised services will require your consent.\n\nBefore we begin, may I have your name so I can address you properly?`);
       return;
     }
 
@@ -120,14 +132,22 @@ export async function handleIncomingMessage(messagePayload) {
       session.metadata.lastPropertyButtons = { propertyId, time: Date.now() };
 
       // 5. Send "What would you like to do?" action buttons
+      const propertyButtons = property.status === "Sold Out"
+        ? [
+            { id: "view_properties", title: "More Properties" },
+            { id: "speak_agent", title: "Speak to Agent" },
+          ]
+        : [
+            { id: `schedule_${property.id}`, title: "Schedule Visit" },
+            { id: "view_properties", title: "More Properties" },
+            { id: "speak_agent", title: "Speak to Agent" },
+          ];
       await sendButtonMessage(
         from,
-        `What would you like to do?`,
-        [
-          { id: `schedule_${property.id}`, title: "Schedule Visit" },
-          { id: "view_properties", title: "More Properties" },
-          { id: "speak_agent", title: "Speak to Agent" },
-        ],
+        property.status === "Sold Out"
+          ? `This property is currently *sold out*. Would you like to explore other options?`
+          : `What would you like to do?`,
+        propertyButtons,
         property.name
       );
       return;
@@ -135,6 +155,11 @@ export async function handleIncomingMessage(messagePayload) {
 
     // Schedule viewing button from property detail
     if (interactiveId.startsWith("schedule_")) {
+      // Check consent before allowing viewing
+      if (!session.consentGiven) {
+        await sendConsentForViewing(from);
+        return;
+      }
       const propertyId = interactiveId.replace("schedule_", "");
       const property = await getPropertyById(propertyId);
       const propertyName = property?.name || "a property";
@@ -159,6 +184,11 @@ export async function handleIncomingMessage(messagePayload) {
 
     // "Schedule Visit" button
     if (interactiveId === "schedule_viewing") {
+      // Check consent before allowing viewing
+      if (!session.consentGiven) {
+        await sendConsentForViewing(from);
+        return;
+      }
       await addMessage(from, "user", "I'd like to schedule a property viewing");
       const aiResult = await generateAIResponseFull(from, session);
       if (aiResult.leadData) await captureLead(from, aiResult.leadData);
@@ -173,14 +203,8 @@ export async function handleIncomingMessage(messagePayload) {
     }
   }
 
-  // --- GDPR Consent check (first interaction) ---
-  if (!session.consentGiven && session.history.length === 0) {
-    await sendConsentRequest(from);
-    return;
-  }
-
-  // If consent was asked but not yet given, remind them
-  if (!session.consentGiven) {
+  // --- GDPR Consent check (first interaction only) ---
+  if (!session.consentGiven && !session.metadata?.consentDeclined && session.history.length === 0) {
     await sendConsentRequest(from);
     return;
   }
@@ -250,6 +274,31 @@ export async function handleIncomingMessage(messagePayload) {
     return;
   }
 
+  // --- Viewing confirmation interception ---
+  // When a viewing date/time was proposed and we're waiting for the client to confirm
+  if (session.metadata?.pendingViewing) {
+    const answer = userText.trim().toLowerCase();
+    const isPositive = /^(yes|yeah|yep|yh|sure|ok|okay|correct|confirmed?|that'?s?\s*(right|correct|fine|good|great|perfect)|go ahead|proceed|please|pls|book it|y)$/i.test(answer);
+    const isNegative = /^(no|nah|nope|wrong|change|cancel|not?\s*(right|correct)|different)$/i.test(answer);
+
+    if (isPositive) {
+      const pending = session.metadata.pendingViewing;
+      delete session.metadata.pendingViewing;
+      await addMessage(from, "user", userText);
+      await confirmAndCreateViewing(from, pending);
+      return;
+    }
+
+    if (isNegative) {
+      delete session.metadata.pendingViewing;
+      await addMessage(from, "user", userText);
+      await sendTextMessage(from, "No problem! Please let me know your preferred date and time, and I'll arrange a new viewing for you. 😊");
+      await addMessage(from, "assistant", "No problem! Please let me know your preferred date and time, and I'll arrange a new viewing for you.");
+      return;
+    }
+    // If unclear, fall through to AI pipeline
+  }
+
   // --- Suggested-date interception ---
   // When a viewing was rejected and the system suggested an alternative date,
   // intercept time-only replies (e.g. "10", "10am", "2pm") and use the suggested date.
@@ -265,9 +314,6 @@ export async function handleIncomingMessage(messagePayload) {
       delete session.metadata.suggestedProperty;
 
       await addMessage(from, "user", userText);
-      const clientName = session.leadData?.name || "Valued Client";
-      await sendTextMessage(from, `Thank you for your preferred date and time, ${clientName}. I will schedule your viewing for *${sugProp.name}* on *${formatDateNice(sugDate)} at ${formatTimeNice(timeCandidate)}*.\n\nLet me arrange that for you.`);
-      await addMessage(from, "assistant", `Scheduling viewing for ${sugProp.name} on ${sugDate} at ${timeCandidate}`);
 
       await handleViewingSchedule(from, {
         propertyId: sugProp.id,
@@ -324,6 +370,9 @@ export async function handleIncomingMessage(messagePayload) {
   console.log(`[Chat] ${from} → ${userText}`);
   console.log(`[Chat] Bot → ${aiResult.text.slice(0, 150)}...`);
 
+  // Detect if user is explicitly asking for images/photos
+  const userExplicitlyAskedForImages = isExplicitImageRequest(userText);
+
   // Send media + text reply (this is the user-facing latency)
   const skipMedia = !!aiResult.scheduleViewing;
   const isScheduling = !!session.metadata?.scheduling;
@@ -333,7 +382,8 @@ export async function handleIncomingMessage(messagePayload) {
     (Date.now() - lastButtons.time) < 5 * 60 * 1000;
   // Also suppress if a viewing was recently booked for this property
   const viewingJustBooked = !!session.metadata?.lastViewingId;
-  const suppressPropertyUI = skipMedia || isScheduling || recentlyShown || viewingJustBooked;
+  // Allow re-sending images when user explicitly asks for them
+  const suppressPropertyUI = skipMedia || isScheduling || (recentlyShown && !userExplicitlyAskedForImages) || viewingJustBooked;
 
   if (aiResult.showProperty && !suppressPropertyUI) {
     // Send property card first, then images
@@ -356,14 +406,22 @@ export async function handleIncomingMessage(messagePayload) {
     if (prop) {
       session.metadata = session.metadata || {};
       session.metadata.lastPropertyButtons = { propertyId: aiResult.showProperty, time: Date.now() };
+      const pipelineButtons = prop.status === "Sold Out"
+        ? [
+            { id: "view_properties", title: "More Properties" },
+            { id: "speak_agent", title: "Speak to Agent" },
+          ]
+        : [
+            { id: `schedule_${prop.id}`, title: "Schedule Visit" },
+            { id: "view_properties", title: "More Properties" },
+            { id: "speak_agent", title: "Speak to Agent" },
+          ];
       await sendButtonMessage(
         from,
-        `What would you like to do?`,
-        [
-          { id: `schedule_${prop.id}`, title: "Schedule Visit" },
-          { id: "view_properties", title: "More Properties" },
-          { id: "speak_agent", title: "Speak to Agent" },
-        ],
+        prop.status === "Sold Out"
+          ? `This property is currently *sold out*. Would you like to explore other options?`
+          : `What would you like to do?`,
+        pipelineButtons,
         prop.name
       );
     }
@@ -376,9 +434,12 @@ export async function handleIncomingMessage(messagePayload) {
   // Wait for background lead work to finish
   await leadWork;
 
-  // Auto-escalate hot leads
+  // Auto-escalate hot leads — only after sufficient conversation depth
+  // Require at least 10 messages so the client has time to explore properties,
+  // ask questions, view images, and potentially schedule a viewing before escalation.
   const updatedSession = await getSession(from);
-  if (shouldAutoEscalate(updatedSession) && updatedSession.state !== "ESCALATED") {
+  const hasEnoughDepth = updatedSession.history.length >= 10;
+  if (shouldAutoEscalate(updatedSession) && updatedSession.state !== "ESCALATED" && hasEnoughDepth) {
     await updateState(from, "ESCALATED");
     setTimeout(async () => {
       await sendTextMessage(
@@ -422,6 +483,26 @@ async function sendConsentRequest(to) {
     ],
     "Data Privacy",
     "We respect your privacy"
+  );
+}
+
+/**
+ * Re-ask for consent when a non-consented user tries to book a viewing
+ */
+async function sendConsentForViewing(to) {
+  await sendTextMessage(
+    to,
+    `To schedule a property viewing, we'll need to collect some of your details (name, contact, preferences) to coordinate with our team.\n\n🔒 Your information is secure and will only be used for this purpose.\n\nWould you like to provide your consent so we can arrange the viewing?`
+  );
+
+  await sendButtonMessage(
+    to,
+    "Your consent is needed to proceed:",
+    [
+      { id: "consent_accept", title: "✅ Yes, I agree" },
+      { id: "speak_agent", title: "📞 Speak to Agent" },
+    ],
+    "Consent Required"
   );
 }
 
@@ -504,6 +585,17 @@ async function detectPropertyInText(text) {
     console.warn("[Fallback] detectPropertyInText error:", err.message);
   }
   return null;
+}
+
+/**
+ * Detect if user message is explicitly requesting images/photos of a property.
+ */
+function isExplicitImageRequest(text) {
+  const lower = text.toLowerCase().trim();
+  return /\b(show|send|see|view|get)\b.*\b(image|images|photo|photos|picture|pictures|pic|pics)\b/i.test(lower)
+    || /\b(image|images|photo|photos|picture|pictures|pic|pics)\b.*\b(please|pls)?\b/i.test(lower)
+    || /^(images?|photos?|pictures?|pics?)$/i.test(lower)
+    || /\bi\s+(mean|want|need)\s+(an?\s+)?(image|photo|picture|pic)/i.test(lower);
 }
 
 /**
@@ -608,14 +700,22 @@ async function sendPropertyDetail(to, propertyId) {
   await sendPropertyImages(to, propertyId);
 
   // 3. Send action buttons
+  const detailButtons = property.status === "Sold Out"
+    ? [
+        { id: "view_properties", title: "More Properties" },
+        { id: "speak_agent", title: "Speak to Agent" },
+      ]
+    : [
+        { id: `schedule_${property.id}`, title: "Schedule Visit" },
+        { id: "view_properties", title: "More Properties" },
+        { id: "speak_agent", title: "Speak to Agent" },
+      ];
   await sendButtonMessage(
     to,
-    `What would you like to do?`,
-    [
-      { id: `schedule_${property.id}`, title: "Schedule Visit" },
-      { id: "view_properties", title: "More Properties" },
-      { id: "speak_agent", title: "Speak to Agent" },
-    ],
+    property.status === "Sold Out"
+      ? `This property is currently *sold out*. Would you like to explore other options?`
+      : `What would you like to do?`,
+    detailButtons,
     property.name
   );
 }
@@ -625,31 +725,111 @@ async function sendPropertyDetail(to, propertyId) {
  */
 async function handleViewingSchedule(to, scheduleData) {
   const session = await getSession(to);
+
+  // Block viewing without consent
+  if (!session.consentGiven) {
+    await sendConsentForViewing(to);
+    return;
+  }
+
+  // Block viewing for sold-out properties
+  if (scheduleData.propertyId && scheduleData.propertyId !== "unknown") {
+    const property = await getPropertyById(scheduleData.propertyId);
+    if (property && property.status === "Sold Out") {
+      const msg = `We appreciate your interest in *${property.name}*! Unfortunately, this property is currently *sold out* — all units have been taken.\n\nI'd be happy to suggest similar available properties. Would you like me to recommend alternatives?`;
+      await sendTextMessage(to, msg);
+      await addMessage(to, "assistant", msg);
+      return;
+    }
+  }
+
+  // Resolve the date/time now so we can show the client the interpreted result
+  const resolvedDate = resolveDate(scheduleData.preferredDate) || scheduleData.preferredDate || "To be confirmed";
+  const resolvedTime = resolveTime(scheduleData.preferredTime) || scheduleData.preferredTime || "To be confirmed";
+
+  // Pre-validate business hours
+  if (resolvedDate && resolvedDate !== "To be confirmed") {
+    const bizCheck = validateBusinessHours(resolvedDate, resolvedTime !== "To be confirmed" ? resolvedTime : null);
+    if (!bizCheck.valid) {
+      await sendTextMessage(to, `⚠️ ${bizCheck.reason}`);
+      await addMessage(to, "assistant", `⚠️ ${bizCheck.reason}`);
+      return;
+    }
+  }
+
+  // Pre-validate 24-hour advance rule
+  if (resolvedDate && resolvedDate !== "To be confirmed") {
+    const requestedDate = new Date(resolvedDate + (resolvedTime !== "To be confirmed" ? `T${resolvedTime}:00` : "T23:59:59"));
+    const minDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    if (!isNaN(requestedDate.getTime()) && requestedDate < minDate) {
+      const nextBiz = getNextBusinessDay();
+      const slots = await getAvailableSlots(nextBiz, scheduleData.propertyId);
+      const slotText = slots.length > 0
+        ? `\n\nThe next available date is *${formatDateNice(nextBiz)}*. Available slots:\n${slots.map(s => `• ${formatTimeNice(s)}`).join("\n")}`
+        : "";
+      const reason = `All property viewings must be scheduled at least 24 hours in advance. Please choose a later date.${slotText}`;
+      await sendTextMessage(to, `⚠️ ${reason}`);
+      session.metadata = session.metadata || {};
+      if (nextBiz) {
+        session.metadata.suggestedDate = nextBiz;
+        session.metadata.suggestedProperty = {
+          id: scheduleData.propertyId || "unknown",
+          name: scheduleData.propertyName || "Not specified",
+        };
+      }
+      await addMessage(to, "assistant", `⚠️ ${reason}`);
+      return;
+    }
+  }
+
+  const dateDisplay = formatDateNice(resolvedDate);
+  const timeDisplay = formatTimeNice(resolvedTime);
+  const propertyName = scheduleData.propertyName || "Not specified";
+  const clientName = scheduleData.name || session.leadData?.name || "Valued Client";
+
+  // Store pending viewing in session for confirmation
+  session.metadata = session.metadata || {};
+  session.metadata.pendingViewing = {
+    ...scheduleData,
+    resolvedDate,
+    resolvedTime,
+  };
+
+  // Ask client to confirm
+  const confirmMsg = `${clientName}, I'd like to schedule your viewing for *${propertyName}* on *${dateDisplay}* at *${timeDisplay}*.\n\nIs that correct?`;
+  await sendTextMessage(to, confirmMsg);
+  await addMessage(to, "assistant", confirmMsg);
+}
+
+/**
+ * Actually create the viewing after client confirms.
+ */
+async function confirmAndCreateViewing(to, pendingData) {
+  const session = await getSession(to);
+
   const viewing = await createViewing({
     userId: to,
-    propertyId: scheduleData.propertyId || "unknown",
-    propertyName: scheduleData.propertyName || "Not specified",
-    preferredDate: scheduleData.preferredDate || "To be confirmed",
-    preferredTime: scheduleData.preferredTime || "To be confirmed",
-    name: scheduleData.name || session.leadData?.name || "Not provided",
+    propertyId: pendingData.propertyId || "unknown",
+    propertyName: pendingData.propertyName || "Not specified",
+    preferredDate: pendingData.resolvedDate || pendingData.preferredDate || "To be confirmed",
+    preferredTime: pendingData.resolvedTime || pendingData.preferredTime || "To be confirmed",
+    name: pendingData.name || session.leadData?.name || "Not provided",
     phone: to,
     email: session.leadData?.email || "Not provided",
-    notes: scheduleData.notes || "",
+    notes: pendingData.notes || "",
   });
 
-  // Handle rejections (24-hour rule, business hours, slot taken)
+  // Handle rejections (slot taken, etc.)
   if (viewing.rejected) {
     await sendTextMessage(to, `⚠️ ${viewing.reason}`);
-    // Store suggested date/property so next time-only reply uses it
     session.metadata = session.metadata || {};
     if (viewing.suggestedDate) {
       session.metadata.suggestedDate = viewing.suggestedDate;
       session.metadata.suggestedProperty = {
-        id: scheduleData.propertyId || "unknown",
-        name: scheduleData.propertyName || "Not specified",
+        id: pendingData.propertyId || "unknown",
+        name: pendingData.propertyName || "Not specified",
       };
     }
-    // Add to conversation history so AI has context
     await addMessage(to, "assistant", `⚠️ ${viewing.reason}`);
     return;
   }
@@ -691,19 +871,19 @@ async function handleViewingSchedule(to, scheduleData) {
         if (session.leadData?.email && session.leadData.email !== "Not provided") {
           await sendViewingConfirmationEmail(session.leadData.email, confirmed);
         }
+
+        // Ask for email after confirmation if not yet collected
+        if (!session.leadData?.email || session.leadData.email === "Not provided") {
+          setTimeout(async () => {
+            await updateState(to, "AWAITING_EMAIL");
+            await sendTextMessage(to, `📧 To send you a confirmation email with all the details, could you please share your email address?\n\nType *skip* if you'd prefer not to.`);
+          }, 2000);
+        }
       }
     } catch (err) {
       console.error(`[Viewing] Auto-confirm failed for ${viewing.viewingId}:`, err.message);
     }
   }, 10000);
-
-  // Ask for email if not yet collected
-  setTimeout(async () => {
-    if (!session.leadData?.email || session.leadData.email === "Not provided") {
-      await updateState(to, "AWAITING_EMAIL");
-      await sendTextMessage(to, `📧 To send you a confirmation email with all the details, could you please share your email address?\n\nType *skip* if you'd prefer not to.`);
-    }
-  }, 3000);
 }
 
 /**
@@ -757,7 +937,7 @@ async function sendPropertyList(to) {
       rows: apartments.slice(0, 7).map((p) => ({
         id: `property_${p.id}`,
         title: p.name.slice(0, 24),
-        description: `${p.location} — From $${p.priceFrom.toLocaleString()}`.slice(0, 72),
+        description: `${p.location} — From $${p.priceFrom.toLocaleString()}${p.status === "Sold Out" ? " (Sold Out)" : ""}`.slice(0, 72),
       })),
     });
   }
@@ -767,7 +947,7 @@ async function sendPropertyList(to) {
       rows: houses.slice(0, 3).map((p) => ({
         id: `property_${p.id}`,
         title: p.name.slice(0, 24),
-        description: `${p.location} — From $${p.priceFrom.toLocaleString()}`.slice(0, 72),
+        description: `${p.location} — From $${p.priceFrom.toLocaleString()}${p.status === "Sold Out" ? " (Sold Out)" : ""}`.slice(0, 72),
       })),
     });
   }

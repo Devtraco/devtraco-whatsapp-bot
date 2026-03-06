@@ -191,7 +191,7 @@ const DEFAULT_PROPERTIES = [
     priceFrom: 760000,
     currency: "USD",
     amenities: ["Smart Home System", "Air Conditioning", "Water Purification", "Standby Generator", "Video Entry", "Fire Detectors", "Pool", "Gym"],
-    status: "Limited Availability",
+    status: "Sold Out",
     images: [
       "https://devtracoplus.com/site/assets/files/1050/dsc_0873-1.768x0.jpg",
       "https://devtracoplus.com/site/assets/files/1050/dsc_0898.768x0.jpg",
