@@ -313,25 +313,26 @@ export async function handleIncomingMessage(messagePayload) {
       await updateState(from, "ACTIVE");
       await addMessage(from, "user", userText);
 
-      // Send confirmation email if viewing exists
-      const viewingId = session.metadata?.lastViewingId;
-      if (viewingId) {
-        const viewing = await (await import("../services/viewingScheduler.js")).getViewingById(viewingId);
-        if (viewing) {
-          const emailResult = await sendViewingConfirmationEmail(email, viewing);
-          if (emailResult.sent) {
-            await sendTextMessage(from, `📧 Thank you! A confirmation email has been sent to *${email}*.`);
-          } else {
-            await sendTextMessage(from, `📧 Thank you! We've noted your email: *${email}*. Our team will send you a detailed confirmation shortly.`);
-          }
-        } else {
-          await sendTextMessage(from, `📧 Thank you! We've noted your email: *${email}*.`);
-        }
-      } else {
-        await sendTextMessage(from, `📧 Thank you! We've noted your email: *${email}*.`);
-      }
+      // Acknowledge immediately — don't make user wait for email sending
+      await sendTextMessage(from, `📧 Thank you! We've noted your email: *${email}*. A confirmation email is on its way.`);
       await addMessage(from, "assistant", `Thank you, email noted: ${email}`);
       await sendTextMessage(from, `Is there anything else I can help you with? 😊`);
+
+      // Send confirmation email in background (don't block the response)
+      const viewingId = session.metadata?.lastViewingId;
+      if (viewingId) {
+        (async () => {
+          try {
+            const viewing = await (await import("../services/viewingScheduler.js")).getViewingById(viewingId);
+            if (viewing) {
+              const emailResult = await sendViewingConfirmationEmail(email, viewing);
+              console.log(`[Email] Confirmation to ${email}: ${emailResult.sent ? 'sent' : 'failed'}`);
+            }
+          } catch (err) {
+            console.error(`[Email] Background send failed:`, err.message);
+          }
+        })();
+      }
       return;
     }
 
