@@ -262,12 +262,12 @@ function parseAIResponse(raw) {
   let escalate = null;
   let scheduleViewing = null;
 
-  // Extract lead data
+  // Extract lead data — always strip the tag from text first, then try JSON parse
   const leadMatch = raw.match(/\[LEAD_DATA\](.*?)\[\/LEAD_DATA\]/s);
   if (leadMatch) {
+    text = text.replace(leadMatch[0], "").trim();
     try {
       leadData = JSON.parse(leadMatch[1]);
-      text = text.replace(leadMatch[0], "").trim();
     } catch {
       console.warn("Failed to parse lead data from AI response");
     }
@@ -280,12 +280,12 @@ function parseAIResponse(raw) {
     text = text.replace(escMatch[0], "").trim();
   }
 
-  // Extract viewing schedule
+  // Extract viewing schedule — always strip tag first so it never leaks to the user
   const viewMatch = raw.match(/\[SCHEDULE_VIEWING\](.*?)\[\/SCHEDULE_VIEWING\]/s);
   if (viewMatch) {
+    text = text.replace(viewMatch[0], "").trim();
     try {
       scheduleViewing = JSON.parse(viewMatch[1]);
-      text = text.replace(viewMatch[0], "").trim();
     } catch {
       console.warn("Failed to parse viewing schedule from AI response");
     }

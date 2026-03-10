@@ -11,7 +11,7 @@ import {
   markAsRead,
 } from "../services/whatsapp.js";
 import { getAllProperties, getPropertyById, formatPropertyCard } from "../data/properties.js";
-import { createViewing, formatViewingPending, formatViewingConfirmed, getUserViewings, updateViewingStatus, resolveDate, resolveTime, formatDateNice, formatTimeNice, getAvailableSlots, validateBusinessHours, getNextBusinessDay } from "../services/viewingScheduler.js";
+import { createViewing, formatViewingPending, formatViewingConfirmed, getUserViewings, updateViewingStatus, resolveDate, resolveTime, formatDateNice, formatTimeNice, getAvailableSlots, validateBusinessHours, getNextBusinessDay, getViewingById } from "../services/viewingScheduler.js";
 import { sendViewingConfirmationEmail } from "../services/email.js";
 import config from "../config/index.js";
 
@@ -214,6 +214,7 @@ export async function handleIncomingMessage(messagePayload) {
       // Set scheduling flag to suppress duplicate property buttons
       session.metadata = session.metadata || {};
       session.metadata.scheduling = propertyId;
+      session.metadata.schedulingPropertyName = propertyName;
       await addMessage(from, "user", `I'd like to schedule a viewing for ${propertyName}`);
       const aiResult = await generateAIResponseFull(from, session);
       if (aiResult.leadData) await captureLead(from, aiResult.leadData);
@@ -323,7 +324,7 @@ export async function handleIncomingMessage(messagePayload) {
       if (viewingId) {
         (async () => {
           try {
-            const viewing = await (await import("../services/viewingScheduler.js")).getViewingById(viewingId);
+            const viewing = await getViewingById(viewingId);
             if (viewing) {
               const emailResult = await sendViewingConfirmationEmail(email, viewing);
               console.log(`[Email] Confirmation to ${email}: ${emailResult.sent ? 'sent' : 'failed'}`);
@@ -383,6 +384,27 @@ export async function handleIncomingMessage(messagePayload) {
   await addMessage(from, "user", userText);
   const aiResult = await generateAIResponseFull(from, session);
   const aiDone = Date.now();
+
+  // --- Fallback scheduling: AI confirmed intent but didn't emit the tag ---
+  // Happens when the model says "I'll arrange that" but omits [SCHEDULE_VIEWING].
+  // Recover by parsing the date/time from the user's own message.
+  if (!aiResult.scheduleViewing && session.metadata?.scheduling) {
+    const confirmsPhrases = /\b(let me arrange|i.ll arrange|i will arrange|arrange that|submit.*viewing|i.ll submit|book.*for you|scheduled.*for you|set.*up.*viewing)\b/i;
+    if (confirmsPhrases.test(aiResult.text)) {
+      const property = await getPropertyById(session.metadata.scheduling);
+      const parsed = extractDateTimeFromText(userText);
+      if (parsed.date || parsed.time) {
+        aiResult.scheduleViewing = {
+          propertyId: session.metadata.scheduling,
+          propertyName: property?.name || session.metadata.schedulingPropertyName || "Not specified",
+          preferredDate: parsed.date || "To be confirmed",
+          preferredTime: parsed.time || "To be confirmed",
+          name: session.leadData?.name || "Not provided",
+        };
+        console.log(`[Fallback] Schedule recovery from user message: ${JSON.stringify(aiResult.scheduleViewing)}`);
+      }
+    }
+  }
 
   // --- Post-AI processing (non-blocking where possible) ---
 
@@ -446,10 +468,9 @@ export async function handleIncomingMessage(messagePayload) {
     }
   }
 
-  // Skip AI's intermediate text when we're about to schedule (avoids "Let me arrange that..." before the real confirmation)
-  if (!aiResult.scheduleViewing) {
-    await sendTextMessage(from, aiResult.text);
-  }
+  // Always send the AI response text — it gives the user the acknowledgment ("I'll arrange that...").
+  // The subsequent viewing submission / rejection message will follow immediately after.
+  await sendTextMessage(from, aiResult.text);
 
   // Send images AFTER text so they don't push the description down
   if (aiResult.showProperty && !suppressPropertyUI) {
@@ -644,6 +665,51 @@ async function detectPropertyInText(text) {
     console.warn("[Fallback] detectPropertyInText error:", err.message);
   }
   return null;
+}
+
+/**
+ * Extract a date and/or time from a free-form user message.
+ * Handles patterns like "Tomorrow 11", "Saturday 2pm", "March 15 at 10am", "11am tomorrow".
+ * Returns { date: "YYYY-MM-DD"|null, time: "HH:MM"|null }.
+ */
+function extractDateTimeFromText(userText) {
+  const rawText = userText.trim();
+  const words = rawText.split(/\s+/);
+  let date = null;
+  let time = null;
+
+  // 1. Try the full string as a date or time
+  date = resolveDate(rawText);
+  time = resolveTime(rawText);
+  if (date && time) return { date, time };
+
+  // 2. Try splitting at each word boundary: [date part] + [time part] and vice-versa
+  for (let i = 1; i < words.length; i++) {
+    const part1 = words.slice(0, i).join(" ");
+    const part2 = words.slice(i).join(" ").replace(/^at\s+/i, "");
+
+    const d1 = resolveDate(part1);
+    const t2 = resolveTime(part2);
+    if (d1 && t2) return { date: d1, time: t2 };
+
+    const t1 = resolveTime(part1);
+    const d2 = resolveDate(part2);
+    if (d2 && t1) return { date: d2, time: t1 };
+
+    // Partial matches — keep scanning but record first hits
+    if (!date && d1) date = d1;
+    if (!time && t2) time = t2;
+    if (!date && d2) date = d2;
+    if (!time && t1) time = t1;
+  }
+
+  // 3. Regex fallback for inline time patterns like "11am", "2:30pm" buried in longer text
+  if (!time) {
+    const inlineTime = rawText.match(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i);
+    if (inlineTime) time = resolveTime(inlineTime[1]);
+  }
+
+  return { date, time };
 }
 
 /**
@@ -892,9 +958,10 @@ async function confirmAndCreateViewing(to, pendingData) {
     return;
   }
 
-  // Success — clear scheduling flag
+  // Success — clear scheduling flags
   session.metadata = session.metadata || {};
   session.metadata.scheduling = null;
+  session.metadata.schedulingPropertyName = null;
   session.metadata.suggestedDate = null;
   session.metadata.suggestedProperty = null;
   session.metadata.lastViewingId = viewing.viewingId;
@@ -925,13 +992,16 @@ async function confirmAndCreateViewing(to, pendingData) {
         await sendTextMessage(to, formatViewingConfirmed(confirmed));
         console.log(`[Viewing] Auto-confirmed ${viewing.viewingId} for ${to}`);
 
+        // Use a fresh session so we have the latest lead data (e.g. email already provided)
+        const freshSession = await getSession(to);
+
         // Send email if we have one
-        if (session.leadData?.email && session.leadData.email !== "Not provided") {
-          await sendViewingConfirmationEmail(session.leadData.email, confirmed);
+        if (freshSession.leadData?.email && freshSession.leadData.email !== "Not provided") {
+          await sendViewingConfirmationEmail(freshSession.leadData.email, confirmed);
         }
 
         // Ask for email after confirmation if not yet collected
-        if (!session.leadData?.email || session.leadData.email === "Not provided") {
+        if (!freshSession.leadData?.email || freshSession.leadData.email === "Not provided") {
           setTimeout(async () => {
             await updateState(to, "AWAITING_EMAIL");
             await sendTextMessage(to, `📧 To send you a confirmation email with all the details, could you please share your email address?\n\nType *skip* if you'd prefer not to.`);
