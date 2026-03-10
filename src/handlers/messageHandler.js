@@ -381,16 +381,23 @@ export async function handleIncomingMessage(messagePayload) {
     const confirmsPhrases = /\b(let me arrange that|i.ll arrange that|i will arrange that|i.ll submit your|i will submit your|submitting your viewing|book(?:ed|ing) you(?:\s+in)?\s+for)\b/i;
     if (confirmsPhrases.test(aiResult.text)) {
       const property = await getPropertyById(session.metadata.scheduling);
-      const parsed = extractDateTimeFromText(userText);
+      // Try user's message first; if incomplete, try the AI's own reply text
+      // (e.g. user says "tomorrow isn't a weekend" and AI echoes "tomorrow at 11:00 AM")
+      let parsed = extractDateTimeFromText(userText);
+      if (!parsed.date || !parsed.time) {
+        const fromAI = extractDateTimeFromText(aiResult.text);
+        if (!parsed.date && fromAI.date) parsed.date = fromAI.date;
+        if (!parsed.time && fromAI.time) parsed.time = fromAI.time;
+      }
       if (parsed.date && parsed.time) {
         aiResult.scheduleViewing = {
           propertyId: session.metadata.scheduling,
           propertyName: property?.name || session.metadata.schedulingPropertyName || "Not specified",
-          preferredDate: parsed.date || "To be confirmed",
-          preferredTime: parsed.time || "To be confirmed",
+          preferredDate: parsed.date,
+          preferredTime: parsed.time,
           name: session.leadData?.name || "Not provided",
         };
-        console.log(`[Fallback] Schedule recovery from user message: ${JSON.stringify(aiResult.scheduleViewing)}`);
+        console.log(`[Fallback] Schedule recovery: ${JSON.stringify(aiResult.scheduleViewing)}`);
       }
     }
   }
