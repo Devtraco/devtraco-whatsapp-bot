@@ -174,8 +174,16 @@ export async function getAvailableSlots(dateStr, propertyId = null) {
       .map(v => v.preferredTime);
   }
 
-  // Filter out booked slots
-  const available = ALL_SLOTS.filter(slot => !existingViewings.includes(slot));
+  // Filter out booked slots AND slots that are within 24 hours from now
+  const cutoff = Date.now() + 24 * 60 * 60 * 1000;
+  const available = ALL_SLOTS.filter(slot => {
+    if (existingViewings.includes(slot)) return false;
+    try {
+      const slotTime = new Date(`${dateStr}T${slot}:00`);
+      if (!isNaN(slotTime.getTime()) && slotTime.getTime() <= cutoff) return false;
+    } catch {}
+    return true;
+  });
   return available;
 }
 
@@ -423,10 +431,21 @@ function docToViewing(doc) {
 }
 
 /**
- * Get the next business day (Mon-Fri) that is at least 24h away.
+ * Get the next business day (Mon-Fri) where the earliest slot (8:00 AM) is
+ * at least 24 hours away from now. This prevents showing a date where
+ * only some of the morning slots are within the 24h window.
  */
 export function getNextBusinessDay() {
-  const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const cutoff = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  // Start at 8:00 AM on the same calendar day as cutoff
+  const d = new Date(cutoff);
+  d.setHours(8, 0, 0, 0);
+  // If 8 AM on that day is still within the cutoff window, move to the next day
+  if (d.getTime() <= cutoff.getTime()) {
+    d.setDate(d.getDate() + 1);
+    d.setHours(8, 0, 0, 0);
+  }
+  // Skip weekends
   while (d.getDay() === 0 || d.getDay() === 6) {
     d.setDate(d.getDate() + 1);
   }
