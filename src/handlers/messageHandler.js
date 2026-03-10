@@ -375,14 +375,14 @@ export async function handleIncomingMessage(messagePayload) {
   const aiDone = Date.now();
 
   // --- Fallback scheduling: AI confirmed intent but didn't emit the tag ---
-  // Happens when the model says "I'll arrange that" but omits [SCHEDULE_VIEWING].
-  // Recover by parsing the date/time from the user's own message.
+  // Only fires when AI clearly says it is SUBMITTING (not just "can arrange, what time?").
+  // Also requires BOTH a date AND a time — never create a booking with unknown time.
   if (!aiResult.scheduleViewing && session.metadata?.scheduling) {
-    const confirmsPhrases = /\b(let me arrange|i.ll arrange|i will arrange|arrange that|submit.*viewing|i.ll submit|book.*for you|scheduled.*for you|set.*up.*viewing)\b/i;
+    const confirmsPhrases = /\b(let me arrange that|i.ll arrange that|i will arrange that|i.ll submit your|i will submit your|submitting your viewing|book(?:ed|ing) you(?:\s+in)?\s+for)\b/i;
     if (confirmsPhrases.test(aiResult.text)) {
       const property = await getPropertyById(session.metadata.scheduling);
       const parsed = extractDateTimeFromText(userText);
-      if (parsed.date || parsed.time) {
+      if (parsed.date && parsed.time) {
         aiResult.scheduleViewing = {
           propertyId: session.metadata.scheduling,
           propertyName: property?.name || session.metadata.schedulingPropertyName || "Not specified",

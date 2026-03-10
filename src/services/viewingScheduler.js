@@ -363,8 +363,8 @@ export function formatViewingPending(viewing) {
     ``,
     `📋 Reference: *${viewing.viewingId || viewing.id}*`,
     `🏠 Property: *${viewing.propertyName}*`,
-    `📆 Preferred Date: ${viewing.preferredDate}`,
-    `🕐 Preferred Time: ${viewing.preferredTime}`,
+    `📆 Preferred Date: ${formatDateNice(viewing.preferredDate)}`,
+    `🕐 Preferred Time: ${formatTimeNice(viewing.preferredTime)}`,
     `👤 Name: ${viewing.name}`,
     ``,
     `Your request is being reviewed by our team. A viewing is only confirmed once you receive a confirmation call/message and the assigned Sales Executive's contact details.`,
@@ -386,8 +386,8 @@ export function formatViewingConfirmed(viewing) {
     ``,
     `📋 Reference: *${viewing.viewingId || viewing.id}*`,
     `🏠 Property: *${viewing.propertyName}*`,
-    `📆 Date: ${viewing.preferredDate}`,
-    `🕐 Time: ${viewing.preferredTime}`,
+    `📆 Date: ${formatDateNice(viewing.preferredDate)}`,
+    `🕐 Time: ${formatTimeNice(viewing.preferredTime)}`,
     `👤 Name: ${viewing.name}`,
     ``,
     `Your viewing has been confirmed by our team! We look forward to seeing you.`,
@@ -469,8 +469,10 @@ export function formatDateNice(dateStr) {
  * Format HH:MM to "10:00 AM"
  */
 export function formatTimeNice(timeStr) {
+  if (!timeStr || timeStr === "To be confirmed") return timeStr || "To be confirmed";
   try {
     const [h, m] = timeStr.split(":").map(Number);
+    if (isNaN(h) || isNaN(m)) return timeStr;
     const ampm = h >= 12 ? "PM" : "AM";
     const hour12 = h % 12 || 12;
     return `${hour12}:${String(m).padStart(2, "0")} ${ampm}`;
