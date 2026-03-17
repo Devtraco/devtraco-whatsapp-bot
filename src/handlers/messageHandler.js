@@ -202,8 +202,22 @@ export async function handleIncomingMessage(messagePayload) {
           await sendTextMessage(from, `Thank you for your consent, *${session.leadData.name}*! 🙏\n\nLet's schedule your property viewing. Which property are you interested in visiting?`);
           await sendPropertyList(from);
         } else {
-          await sendTextMessage(from, `Thank you for your consent, *${session.leadData.name}*! 🙏\n\nYou now have full access. How may I assist you today?`);
-          setTimeout(() => sendMainMenu(from), 1500);
+          const pendingIntent = session.metadata.pendingIntent;
+          delete session.metadata.pendingIntent;
+          if (pendingIntent) {
+            await sendTextMessage(from, `Thank you, *${session.leadData.name}*! 🙏\n\nLet me help you with that.`);
+            setTimeout(async () => {
+              try {
+                const syntheticId = `intent_${from}_${Date.now()}`;
+                await handleIncomingMessage({ from, id: syntheticId, text: { body: pendingIntent }, type: "text" });
+              } catch (err) {
+                console.error("[PendingIntent] Error processing:", err.message);
+              }
+            }, 1500);
+          } else {
+            await sendTextMessage(from, `Thank you for your consent, *${session.leadData.name}*! 🙏\n\nYou now have full access. How may I assist you today?`);
+            setTimeout(() => sendMainMenu(from), 1500);
+          }
         }
       } else {
         await updateState(from, "AWAITING_NAME");
@@ -214,8 +228,29 @@ export async function handleIncomingMessage(messagePayload) {
     if (interactiveId === "consent_decline") {
       session.metadata = session.metadata || {};
       session.metadata.consentDeclined = true;
-      await updateState(from, "AWAITING_NAME");
-      await sendTextMessage(from, `No problem at all! Your privacy is important to us. 🔒\n\nYou can still browse our properties and learn about what we offer. However, please note that scheduling viewings and personalised services will require your consent.\n\nBefore we begin, may I have your name so I can address you properly?`);
+      const pendingIntent = session.metadata.pendingIntent;
+      delete session.metadata.pendingIntent;
+
+      if (session.leadData?.name) {
+        await updateState(from, "ACTIVE");
+        if (pendingIntent) {
+          await sendTextMessage(from, `No problem, *${session.leadData.name}*! 🔒 Your privacy is fully respected.\n\nYou can still browse our properties and get information. Scheduling viewings will require your consent when the time comes.\n\nLet me help you with that.`);
+          setTimeout(async () => {
+            try {
+              const syntheticId = `intent_decline_${from}_${Date.now()}`;
+              await handleIncomingMessage({ from, id: syntheticId, text: { body: pendingIntent }, type: "text" });
+            } catch (err) {
+              console.error("[PendingIntent Decline] Error:", err.message);
+            }
+          }, 1500);
+        } else {
+          await sendTextMessage(from, `No problem, *${session.leadData.name}*! 🔒 Your privacy is fully respected.\n\nYou can still browse our properties and get information. Scheduling viewings will require your consent when needed.\n\nHow may I assist you today?`);
+          setTimeout(() => sendMainMenu(from), 1500);
+        }
+      } else {
+        await updateState(from, "AWAITING_NAME");
+        await sendTextMessage(from, `No problem at all! Your privacy is important to us. 🔒\n\nYou can still browse our properties and learn about what we offer. However, please note that scheduling viewings and personalised services will require your consent.\n\nBefore we begin, may I have your name so I can address you properly?`);
+      }
       return;
     }
 
@@ -319,54 +354,63 @@ export async function handleIncomingMessage(messagePayload) {
     }
   }
 
-  // --- GDPR Consent check (first interaction only) ---
-  if (!session.consentGiven && !session.metadata?.consentDeclined && session.history.length === 0) {
-    await sendConsentRequest(from);
+  // --- First message — show welcome, ask name + intent (GDPR shown after intent is known) ---
+  if (session.history.length === 0) {
+    await updateState(from, "AWAITING_NAME");
+    await sendTextMessage(
+      from,
+      `Welcome to Devtraco Plus! 🏡\n\nIt's a pleasure to have you here.\n\nMay I have your name, and how can I assist you in finding your perfect home today?`
+    );
     return;
   }
 
-  // --- Name collection (after consent, before main conversation) ---
+  // --- Name collection ---
   if (session.state === "AWAITING_NAME") {
     let name = userText.trim();
-    let extraMessage = null;
+    let intent = null;
 
-    // Extract name from phrases like "My name is John" or "I'm John, I need..."
+    // Extract name from phrases like "My name is John" or "I'm John"
     const nameMatch = name.match(/(?:my name is|i'm|i am|it's|call me)\s+(.+)/i);
     if (nameMatch) name = nameMatch[1].trim();
 
-    // Separate name from additional text (e.g. "Muheeb, I need an apartment")
+    // Separate name from additional intent (e.g. "John, I need a 3-bed apartment")
     const separatorMatch = name.match(/^([^,]+?)\s*[,.]?\s*\b(i\s+(?:need|want|would|am|like|'m)|and\s+i|but\s+i|can\s+you|please|could|do\s+you|what|how|show|tell|looking|interested).+$/i);
     if (separatorMatch) {
       name = separatorMatch[1].trim();
-      extraMessage = userText; // Re-process the full message through AI pipeline
+      intent = userText; // full message is their intent
     }
 
-    name = name.replace(/[.!,]+$/, '').trim(); // clean trailing punctuation
+    name = name.replace(/[.!,]+$/, '').trim();
 
     if (name.length > 0 && name.length < 100 && !name.startsWith('/')) {
       await updateLeadData(from, { name });
-      await updateState(from, "ACTIVE");
       await addMessage(from, "user", userText);
-      await addMessage(from, "assistant", `Welcome, ${name}! How may I assist you today?`);
-      await sendTextMessage(from, `Welcome, *${name}*! 🌟\n\nIt's a pleasure to have you here. How may I assist you in finding your perfect home today?`);
 
-      // If user included a request alongside their name, process it now
-      if (extraMessage) {
-        // Small delay so welcome message arrives first, then process the request
-        setTimeout(async () => {
-          try {
-            const syntheticId = `name_extra_${from}_${Date.now()}`;
-            await handleIncomingMessage({ from, id: syntheticId, text: { body: extraMessage }, type: "text" });
-          } catch (err) {
-            console.error("[Name+Request] Error processing extra message:", err.message);
-          }
-        }, 2000);
+      if (intent) {
+        // Name + intent given — store intent, show GDPR
+        session.metadata = session.metadata || {};
+        session.metadata.pendingIntent = intent;
+        await updateLeadData(from, {});
+        await sendConsentRequest(from);
       } else {
-        setTimeout(() => sendMainMenu(from), 1500);
+        // Name only — ask for intent
+        await updateState(from, "AWAITING_INTENT");
+        await addMessage(from, "assistant", `Nice to meet you, ${name}! How may I assist you in finding your perfect home today?`);
+        await sendTextMessage(from, `Nice to meet you, *${name}*! 😊\n\nHow may I assist you in finding your perfect home today?`);
       }
     } else {
       await sendTextMessage(from, "I'd love to address you properly. Could you please share your name?");
     }
+    return;
+  }
+
+  // --- Intent collection (after name, before consent) ---
+  if (session.state === "AWAITING_INTENT") {
+    session.metadata = session.metadata || {};
+    session.metadata.pendingIntent = userText;
+    await addMessage(from, "user", userText);
+    await updateLeadData(from, {});
+    await sendConsentRequest(from);
     return;
   }
 
@@ -609,7 +653,7 @@ async function generateAIResponseFull(from, session) {
 async function sendConsentRequest(to) {
   await sendTextMessage(
     to,
-    `👋 *Welcome to Devtraco Plus!*\n\nI'm your dedicated property assistant, here to help you discover premium residences across Accra's finest neighbourhoods.\n\nBefore we begin, a note on your privacy:\n\n📋 We may collect your name, contact information, and preferences to provide you with a tailored property experience.\n\n🔒 Your information is secure. We have suitable physical, electronic, and managerial procedures in place to safeguard your data. We will not sell, distribute, or lease your personal information to third parties unless required by law.\n\nFor our full privacy policy, please visit devtracoplus.com or email info@devtracoplus.com.\n\nDo you consent to proceed?`
+    `Before we proceed, a quick note on your privacy:\n\n📋 We may collect your name, contact information, and preferences to provide you with a tailored property experience.\n\n🔒 Your information is secure. We will not sell, distribute, or lease your personal information to third parties unless required by law.\n\nFor our full privacy policy, visit devtracoplus.com or email info@devtracoplus.com.\n\nDo you consent to proceed?`
   );
 
   await sendButtonMessage(
