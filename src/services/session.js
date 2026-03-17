@@ -233,6 +233,7 @@ function docToSession(doc) {
     leadData: doc.leadData || { name: null, email: null, phone: doc.userId, budget: null, propertyInterest: null, preferredLocation: null, timeline: null },
     leadScore: doc.leadScore || 0,
     lastActivity: doc.lastActivity || Date.now(),
+    firstContact: doc.createdAt ? new Date(doc.createdAt).getTime() : (doc.lastActivity || Date.now()),
     consentGiven: doc.consentGiven || false,
     metadata: doc.metadata || {},
   };

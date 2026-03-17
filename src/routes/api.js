@@ -152,6 +152,12 @@ router.get("/conversations", async (req, res) => {
     escalationStatus: s.metadata?.escalation?.status || null,
     lastMessage: s.history?.length > 0 ? s.history[s.history.length - 1].content?.substring(0, 80) : null,
     lastActivity: s.lastActivity,
+    firstContact: s.firstContact || s.lastActivity,
+    name: s.leadData?.name || null,
+    email: s.leadData?.email || null,
+    propertyInterest: s.leadData?.propertyInterest || null,
+    budget: s.leadData?.budget || null,
+    consentGiven: s.consentGiven || false,
   }));
   res.json({ count: convos.length, conversations: convos });
 });
@@ -171,6 +177,13 @@ router.get("/conversations/:userId", async (req, res) => {
     history: session.history || [],
     leadScore: session.leadScore,
     leadTier: getLeadTier(session.leadScore),
+    name: session.leadData?.name || null,
+    email: session.leadData?.email || null,
+    propertyInterest: session.leadData?.propertyInterest || null,
+    budget: session.leadData?.budget || null,
+    consentGiven: session.consentGiven || false,
+    firstContact: session.firstContact || session.lastActivity,
+    lastActivity: session.lastActivity,
   });
 });
 
