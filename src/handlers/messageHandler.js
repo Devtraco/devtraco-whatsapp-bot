@@ -392,7 +392,7 @@ export async function handleIncomingMessage(messagePayload) {
         session.metadata = session.metadata || {};
         session.metadata.pendingIntent = intent;
         await updateLeadData(from, {});
-        await sendConsentRequest(from);
+        await sendConsentRequest(from, name, intent);
       } else {
         // Name only — ask for intent
         await updateState(from, "AWAITING_INTENT");
@@ -411,7 +411,7 @@ export async function handleIncomingMessage(messagePayload) {
     session.metadata.pendingIntent = userText;
     await addMessage(from, "user", userText);
     await updateLeadData(from, {});
-    await sendConsentRequest(from);
+    await sendConsentRequest(from, session.leadData?.name, userText);
     return;
   }
 
@@ -649,12 +649,47 @@ async function generateAIResponseFull(from, session) {
 }
 
 /**
- * Send GDPR/data consent request
+ * Basic gender title detection for common Ghanaian and international names.
+ * Returns 'Mr.' / 'Ms.' or null if uncertain.
  */
-async function sendConsentRequest(to) {
+function getNameTitle(name) {
+  const first = name.split(' ')[0].toLowerCase();
+  const male = ['kobby','kwame','kofi','kweku','kojo','kwabena','kwesi','yaw','fiifi','ekow','ebo',
+    'daniel','michael','james','john','peter','paul','david','george','richard','robert','william',
+    'thomas','charles','joseph','eric','samuel','benjamin','frank','henry','andrew','mark','stephen',
+    'edward','christopher','patrick','emmanuel','isaac','prince','felix','justice','bright','richmond',
+    'ernest','fred','solomon','alex','victor','muheeb','ahmed','ibrahim','yussif','yakubu','nana kwame',
+    'kwabena','ato','nii','nana','kow','kweku','kwame','kevin','kenneth','leonard','lawrence','moses',
+    'nathaniel','nicholas','oliver','oscar','phillip','raymond','reginald','ronald','ruben','russell',
+    'sebastian','simon','stanley','theodore','timothy','tony','trevor','ulric','warren','xavier'];
+  const female = ['ama','akosua','abena','akua','adjoa','adwoa','afia','efua','maame','yaa','esi',
+    'freda','sandra','grace','mercy','patience','abigail','sarah','mary','elizabeth','diana','emily',
+    'jennifer','linda','margaret','patricia','barbara','jessica','helen','ruth','deborah','esther',
+    'clara','naomi','rachel','rebecca','alice','gloria','joy','hope','faith','celestine','vivian',
+    'doris','benedicta','gifty','eunice','regina','priscilla','harriet','akosua','nana ama','adjoa',
+    'abenaa','adwoa','araba','ewurama','ekua','sheila','sylvia','theresa','victoria','wendy','zara'];
+  if (male.includes(first)) return 'Mr.';
+  if (female.includes(first)) return 'Ms.';
+  return null;
+}
+
+/**
+ * Send GDPR/data consent request — personalised with name and intent
+ */
+async function sendConsentRequest(to, name = null, intent = null) {
+  const title = name ? getNameTitle(name) : null;
+  const addressed = name ? (title ? `${title} ${name}` : name) : null;
+
+  let intro = '';
+  if (addressed && intent) {
+    intro = `*${addressed}*, that's great to hear! `;
+  } else if (addressed) {
+    intro = `*${addressed}*, great to connect with you! `;
+  }
+
   await sendTextMessage(
     to,
-    `Before we proceed, a quick note on your privacy:\n\n📋 We may collect your name, contact information, and preferences to provide you with a tailored property experience.\n\n🔒 Your information is secure. We will not sell, distribute, or lease your personal information to third parties unless required by law.\n\nFor our full privacy policy, visit devtracoplus.com or email info@devtracoplus.com.\n\nDo you consent to proceed?`
+    `${intro}Before we proceed, a quick note on your privacy:\n\n📋 We may collect your contact information and preferences to provide you with a tailored property experience.\n\n🔒 Your information is secure. We will not sell, distribute, or lease your personal information to third parties unless required by law.\n\nFor our full privacy policy, visit devtracoplus.com or email info@devtracoplus.com.\n\nDo you consent to proceed?`
   );
 
   await sendButtonMessage(
