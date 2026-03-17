@@ -530,6 +530,35 @@ export async function handleIncomingMessage(messagePayload) {
     }
   }
 
+  // --- Off-topic guard ---
+  // Detect users consistently asking for jobs, money, romance, or totally unrelated topics.
+  // After 2 off-topic exchanges the system sends one polite closure and stops engaging.
+  const OFF_TOPIC_PATTERNS = [
+    // Job / employment seeking
+    /\b(?:looking\s+for\s+(?:a\s+)?(?:job|work)|find\s+(?:me\s+)?(?:a\s+)?(?:job|work|company)|hire\s+me|employ\s+me|i\s+need\s+(?:a\s+)?(?:job|work)|i\s+want\s+to\s+work|mechanic|plumber|electrician|driver|gardener|security\s+guard|domestic|housekeeper|skilled\s+worker)\b/i,
+    // Money / financial begging
+    /\b(?:send\s+(?:me\s+)?money|give\s+(?:me\s+)?money|i\s+need\s+money|lend\s+me|help\s+me\s+with\s+(?:some\s+)?money|need\s+cash|transfer\s+(?:to\s+)?me|mobile\s+money|momo\s+me)\b/i,
+    // Romantic / inappropriate
+    /\b(?:i\s+love\s+you|my\s+love\s+is\s+(?:for\s+)?you|be\s+my\s+(?:girlfriend|boyfriend|lover|wife|husband)|marry\s+me|i\s+(?:like|love)\s+you\s+babe|sweetie|you\s+are\s+(?:so\s+)?beautiful\s+babe|accept\s+me\s+(?:as\s+)?(?:your\s+)?lover)\b/i,
+  ];
+  const offTopic = OFF_TOPIC_PATTERNS.some(p => p.test(userText));
+  if (offTopic) {
+    session.metadata = session.metadata || {};
+    session.metadata.offTopicCount = (session.metadata.offTopicCount || 0) + 1;
+    await updateLeadData(from, {}); // persist counter
+    if (session.metadata.offTopicCount >= 3) {
+      // Send one polite closure on exactly the 3rd strike, then silently discard further messages
+      if (session.metadata.offTopicCount === 3) {
+        await addMessage(from, "user", userText);
+        const closingMsg = `Thank you for getting in touch! 😊\n\nWe specialize exclusively in real estate at Devtraco Plus and aren't able to assist with jobs, financial requests, or other matters.\n\nIf you ever need help finding a property, we'll be right here. Wishing you all the best! 🙏`;
+        await sendTextMessage(from, closingMsg);
+        await addMessage(from, "assistant", closingMsg);
+      }
+      return; // Discard further off-topic messages silently
+    }
+    // Strikes 1-2: fall through to AI — it handles redirection gracefully
+  }
+
   // --- AI conversation pipeline ---
   const pipelineStart = Date.now();
   await addMessage(from, "user", userText);

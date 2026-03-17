@@ -158,6 +158,7 @@ router.get("/conversations", async (req, res) => {
     propertyInterest: s.leadData?.propertyInterest || null,
     budget: s.leadData?.budget || null,
     consentGiven: s.consentGiven || false,
+    offTopicCount: s.metadata?.offTopicCount || 0,
   }));
   res.json({ count: convos.length, conversations: convos });
 });

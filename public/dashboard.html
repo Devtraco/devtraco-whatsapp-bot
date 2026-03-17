@@ -985,11 +985,12 @@
 
 <!-- Chat Viewer Modal -->
 <div id="chatModal" class="modal-overlay hidden">
-  <div class="modal-content" style="max-width:620px;display:flex;flex-direction:column;max-height:85vh;">
+  <div class="modal-content" style="max-width:660px;display:flex;flex-direction:column;max-height:88vh;">
     <div class="modal-header" style="flex-shrink:0;">
       <h3 id="chatModalTitle" style="font-size:14px;">Conversation</h3>
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('chatModal').classList.add('hidden')">&times; Close</button>
     </div>
+    <div id="chatModalInfo" style="flex-shrink:0;padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--border);font-size:12px;color:var(--text-secondary);display:flex;flex-wrap:wrap;gap:12px;"></div>
     <div id="chatModalBody" style="flex:1;overflow-y:auto;padding:16px;background:#f9fafb;display:flex;flex-direction:column;gap:8px;"></div>
   </div>
 </div>
@@ -1320,16 +1321,22 @@
           const consentDot = c.consentGiven
             ? `<span title="Consent given" style="color:var(--success);font-size:10px;">● GDPR</span>`
             : `<span title="No consent yet" style="color:var(--text-muted);font-size:10px;">○ GDPR</span>`;
+          const offTopicBadge = c.offTopicCount >= 3
+            ? `<span title="${c.offTopicCount} off-topic messages — bot stopped responding" style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;margin-left:4px;">🚫 Blocked</span>`
+            : c.offTopicCount >= 1
+            ? `<span title="${c.offTopicCount} off-topic message(s)" style="background:#fee2e2;color:#991b1b;font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;margin-left:4px;">⚠ Off-topic ×${c.offTopicCount}</span>`
+            : '';
 
           // Interest cell
           const interest = c.propertyInterest ? escapeHtml(c.propertyInterest) : '—';
           const budget = c.budget ? `<span style="font-size:11px;color:var(--text-muted);">${escapeHtml(c.budget)}</span>` : '';
+          const rowBg = c.offTopicCount >= 3 ? 'background:#fffbeb;' : '';
 
           return `
-          <tr>
+          <tr style="${rowBg}">
             <td>
               ${nameDisplay}
-              <span style="font-size:12px;color:var(--text-muted);">${c.userId}</span><br>
+              <span style="font-size:12px;color:var(--text-muted);">${c.userId}</span>${offTopicBadge}<br>
               ${consentDot}
             </td>
             <td style="white-space:nowrap;font-size:12px;">${fmtDateTime(c.firstContact)}</td>
@@ -1357,7 +1364,9 @@
   async function openChatModal(phone) {
     const modal = document.getElementById('chatModal');
     const body = document.getElementById('chatModalBody');
+    const info = document.getElementById('chatModalInfo');
     document.getElementById('chatModalTitle').textContent = `Chat — ${phone}`;
+    info.innerHTML = '';
     body.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
     modal.classList.remove('hidden');
 
@@ -1366,15 +1375,39 @@
         if (!r.ok) throw new Error('Not found');
         return r.json();
       });
+
+      // Title: use name if known
+      document.getElementById('chatModalTitle').textContent =
+        data.name ? `${data.name} — ${phone}` : `Chat — ${phone}`;
+
+      // Details bar
+      const tag = (label, val, color) => val
+        ? `<span><strong style="color:${color||'var(--text-primary)'};">${label}:</strong> ${escapeHtml(String(val))}</span>`
+        : '';
+      info.innerHTML = [
+        tag('First contact', fmtDateTime(data.firstContact), 'var(--brand)'),
+        tag('Last active', fmtDateTime(data.lastActivity)),
+        tag('State', data.state, data.state === 'ACTIVE' ? 'var(--success)' : data.state === 'ESCALATED' ? 'var(--danger)' : null),
+        tag('Tier', data.leadTier),
+        tag('Interest', data.propertyInterest),
+        tag('Budget', data.budget),
+        tag('Email', data.email),
+        data.consentGiven
+          ? `<span style="color:var(--success);font-weight:600;">✓ GDPR Consent</span>`
+          : `<span style="color:var(--text-muted);">○ No Consent</span>`,
+      ].filter(Boolean).join(' · ');
+
       if (data.history.length === 0) {
         body.innerHTML = '<div class="chat-empty">No messages in this conversation</div>';
         return;
       }
-      body.innerHTML = data.history.map(msg => `
-        <div class="chat-bubble ${msg.role === 'user' ? 'chat-user' : 'chat-bot'}">
-          ${escapeHtml(msg.content)}
-        </div>
-      `).join('');
+      body.innerHTML = data.history.map(msg => {
+        const ts = msg.timestamp ? `<div style="font-size:10px;opacity:0.5;margin-top:3px;">${fmtDateTime(msg.timestamp)}</div>` : '';
+        return `
+          <div class="chat-bubble ${msg.role === 'user' ? 'chat-user' : 'chat-bot'}">
+            ${escapeHtml(msg.content)}${ts}
+          </div>`;
+      }).join('');
       body.scrollTop = body.scrollHeight;
     } catch (err) {
       body.innerHTML = '<div class="chat-empty">Conversation not found</div>';
