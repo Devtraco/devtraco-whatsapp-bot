@@ -379,37 +379,80 @@ export async function handleIncomingMessage(messagePayload) {
     let name = userText.trim();
     let intent = null;
 
-    // Extract name from phrases like "My name is John" or "I'm John"
+    // Step 1: If message clearly contains a name intro phrase, don't treat as question
+    const hasNameIntro = /(?:my name is|i(?:'m|\s+am)|\bam\b|it's|call me)\s+\w+/i.test(userText);
+
+    // Step 2: Detect questions and greetings with no name — answer via AI and re-ask
+    const looksLikeQuestion = !hasNameIntro && (
+      /\?/.test(userText) ||
+      /^(?:what|where|when|why|who|how|do|does|can|could|is|are|will|would|please|hello+|hi+|hey+|greetings?|good\s*(?:morning|afternoon|evening|night)|sannu|ok(?:ay)?|yes|no)\b/i.test(userText.trim())
+    );
+
+    if (looksLikeQuestion) {
+      await addMessage(from, "user", userText);
+      const aiResult = await generateAIResponseFull(from, session);
+      if (aiResult.leadData) await captureLead(from, aiResult.leadData);
+      await sendTextMessage(from, `${aiResult.text}\n\n_May I also know your name? 😊_`);
+      return;
+    }
+
+    // Step 3: Extract name from intro phrases ("My name is John", "I'm John", "Am John")
     const nameMatch = name.match(/(?:my name is|i(?:'m|\s+am)|\bam\b|it's|call me)\s+(.+)/i);
     if (nameMatch) name = nameMatch[1].trim();
 
-    // Separate name from additional intent (e.g. "John, I need a 3-bed apartment")
-    const separatorMatch = name.match(/^([^,]+?)\s*[,.]?\s*\b(i\s+(?:need|want|would|am|like|'m)|and\s+i|but\s+i|can\s+you|please|could|do\s+you|what|how|show|tell|looking|interested).+$/i);
+    // Step 4: Strip occupation/description suffix (e.g. "Kingsley am a Mason" → "Kingsley")
+    name = name.replace(/\s+(?:and\s+)?(?:i'?m|i\s+am|\bam\b)\s+(?:a(?:n)?\s+)?.+$/i, '').trim();
+
+    // Step 5: Separate name from intent — "Name, I need..." or "Name and I want..."
+    const separatorMatch = name.match(/^([^,]+?)\s*[,.]?\s*\b(i\s+(?:need|want|would|am|like|'m)|and\s+i|but\s+i|can\s+you|could|do\s+you|what|how|show|tell|looking|interested).+$/i);
     if (separatorMatch) {
       name = separatorMatch[1].trim();
-      intent = userText; // full message is their intent
+      intent = userText;
+    }
+
+    // Step 6: Handle "Name, free-text intent" split at first comma
+    if (!separatorMatch && !nameMatch) {
+      const commaIdx = name.indexOf(',');
+      if (commaIdx > 0) {
+        const beforeComma = name.substring(0, commaIdx).trim();
+        const afterComma = name.substring(commaIdx + 1).trim();
+        if (beforeComma.split(/\s+/).length <= 3 && afterComma.length > 5) {
+          name = beforeComma;
+          intent = userText;
+        }
+      }
     }
 
     name = name.replace(/[.!,]+$/, '').trim();
 
-    if (name.length > 0 && name.length < 100 && !name.startsWith('/')) {
-      await updateLeadData(from, { name });
-      await addMessage(from, "user", userText);
+    // Step 7: Plausibility check — extracted result must look like an actual name
+    const nameWords = name.split(/\s+/);
+    const looksLikeName = nameWords.length >= 1 && nameWords.length <= 5 &&
+      name.length >= 2 && !name.includes('?') &&
+      !/^(?:ok|okay|yes|no|maybe|sure|fine|you|they|we|hello|hi|hey|sannu|please|greetings?)\b/i.test(name);
 
-      if (intent) {
-        // Name + intent given — store intent, show GDPR
-        session.metadata = session.metadata || {};
-        session.metadata.pendingIntent = intent;
-        await updateLeadData(from, {});
-        await sendConsentRequest(from, name, intent);
-      } else {
-        // Name only — ask for intent
-        await updateState(from, "AWAITING_INTENT");
-        await addMessage(from, "assistant", `Nice to meet you, ${name}! How may I assist you in finding your perfect home today?`);
-        await sendTextMessage(from, `Nice to meet you, *${name}*! 😊\n\nHow may I assist you in finding your perfect home today?`);
-      }
+    if (!looksLikeName) {
+      await addMessage(from, "user", userText);
+      const aiResult = await generateAIResponseFull(from, session);
+      if (aiResult.leadData) await captureLead(from, aiResult.leadData);
+      await sendTextMessage(from, `${aiResult.text}\n\n_May I also know your name? 😊_`);
+      return;
+    }
+
+    await updateLeadData(from, { name });
+    await addMessage(from, "user", userText);
+
+    if (intent) {
+      // Name + intent given — store intent, show GDPR
+      session.metadata = session.metadata || {};
+      session.metadata.pendingIntent = intent;
+      await updateLeadData(from, {});
+      await sendConsentRequest(from, name, intent);
     } else {
-      await sendTextMessage(from, "I'd love to address you properly. Could you please share your name?");
+      // Name only — ask for intent
+      await updateState(from, "AWAITING_INTENT");
+      await addMessage(from, "assistant", `Nice to meet you, ${name}! How may I assist you in finding your perfect home today?`);
+      await sendTextMessage(from, `Nice to meet you, *${name}*! 😊\n\nHow may I assist you in finding your perfect home today?`);
     }
     return;
   }
