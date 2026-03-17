@@ -60,7 +60,18 @@ export function resolveDate(input) {
   }
 
   // Various date formats: "7th March", "March 7", "7/3/2026", "07-03-2026", etc.
-  // Try Date.parse as fallback
+  // Also extract an embedded day name (e.g. "ok thursday", "this thursday") before falling back to Date.parse
+  const embeddedDay = text.match(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+  if (embeddedDay) {
+    const targetIdx = dayNames.indexOf(embeddedDay[1]);
+    const d = new Date(now);
+    let daysAhead = targetIdx - d.getDay();
+    if (daysAhead <= 0) daysAhead += 7;
+    d.setDate(d.getDate() + daysAhead);
+    return toISO(d);
+  }
+
+  // Try Date.parse as last resort
   const parsed = new Date(input.trim());
   if (!isNaN(parsed.getTime())) {
     // If the parsed date is in the past (no year specified), assume next year
@@ -125,7 +136,7 @@ function toISO(date) {
 export function validateBusinessHours(dateStr, timeStr) {
   if (!dateStr) return { valid: true }; // can't validate without a date
 
-  const date = new Date(dateStr);
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? dateStr + "T12:00:00" : dateStr);
   const dayOfWeek = date.getDay(); // 0=Sun, 6=Sat
 
   if (dayOfWeek === 0 || dayOfWeek === 6) {
