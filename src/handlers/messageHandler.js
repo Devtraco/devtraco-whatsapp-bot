@@ -356,10 +356,11 @@ export async function handleIncomingMessage(messagePayload) {
 
   // --- First message — show welcome, ask name + intent (GDPR shown after intent is known) ---
   if (session.history.length === 0) {
+    await addMessage(from, "user", userText); // persist so history.length > 0 on next message
     await updateState(from, "AWAITING_NAME");
     await sendTextMessage(
       from,
-      `Welcome to Devtraco Plus! 🏡\n\nIt's a pleasure to have you here.\n\nMay I have your name, and how can I assist you in finding your perfect home today?`
+      `Welcome to Devtraco Plus! 🏡\n\nIt's a pleasure to have you here.\n\nMay I have your name, and how I can assist you in finding your perfect home today?`
     );
     return;
   }
