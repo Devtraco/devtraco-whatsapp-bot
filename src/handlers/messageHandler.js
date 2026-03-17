@@ -367,10 +367,22 @@ export async function handleIncomingMessage(messagePayload) {
   if (session.history.length === 0) {
     await addMessage(from, "user", userText); // persist so history.length > 0 on next message
     await updateState(from, "AWAITING_NAME");
-    await sendTextMessage(
-      from,
-      `Welcome to Devtraco Plus! 🏡\n\nIt's a pleasure to have you here.\n\nMay I have your name, and how I can assist you in finding your perfect home today?`
-    );
+
+    // If first message already contains an inquiry ("Can I get more info on this?", etc.),
+    // store it as pendingIntent so it gets processed after the user provides their name.
+    const isInquiry = /\?/.test(userText) ||
+      /\b(?:more\s+info|information|details|about|tell\s+me|show\s+me|interested\s+in|looking\s+for|do\s+you\s+have|i\s+need|i\s+want|can\s+i|could\s+i)\b/i.test(userText);
+    if (isInquiry && userText.trim().length > 10) {
+      session.metadata = session.metadata || {};
+      session.metadata.pendingIntent = userText;
+      await updateLeadData(from, {}); // persist metadata
+    }
+
+    const welcomeMsg = isInquiry && userText.trim().length > 10
+      ? `Welcome to Devtraco Plus! 🏡\n\nI'd be happy to help with your enquiry!\n\nMay I start with your name, please?`
+      : `Welcome to Devtraco Plus! 🏡\n\nIt's a pleasure to have you here.\n\nMay I have your name, and how I can assist you in finding your perfect home today?`;
+    await addMessage(from, "assistant", welcomeMsg);
+    await sendTextMessage(from, welcomeMsg);
     return;
   }
 
@@ -448,6 +460,9 @@ export async function handleIncomingMessage(messagePayload) {
       session.metadata.pendingIntent = intent;
       await updateLeadData(from, {});
       await sendConsentRequest(from, name, intent);
+    } else if (session.metadata?.pendingIntent) {
+      // Name only, but first message already had an inquiry stored — use it
+      await sendConsentRequest(from, name, session.metadata.pendingIntent);
     } else {
       // Name only — ask for intent
       await updateState(from, "AWAITING_INTENT");
