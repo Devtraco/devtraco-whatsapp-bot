@@ -205,17 +205,26 @@ export async function handleIncomingMessage(messagePayload) {
           const pendingIntent = session.metadata.pendingIntent;
           delete session.metadata.pendingIntent;
           if (pendingIntent) {
-            await sendTextMessage(from, `Thank you, *${session.leadData.name}*! 🙏\n\nLet me help you with that.`);
-            setTimeout(async () => {
-              try {
-                const syntheticId = `intent_${from}_${Date.now()}`;
-                await handleIncomingMessage({ from, id: syntheticId, text: { body: pendingIntent }, type: "text" });
-              } catch (err) {
-                console.error("[PendingIntent] Error processing:", err.message);
-              }
-            }, 1500);
+            const title = getNameTitle(session.leadData.name);
+            const addressed = title ? `${title} ${session.leadData.name}` : session.leadData.name;
+            await addMessage(from, "user", pendingIntent);
+            const aiResult = await generateAIResponseFull(from, session);
+            if (aiResult.leadData) await captureLead(from, aiResult.leadData);
+            await sendTextMessage(from, `Thank you, *${addressed}*! 🙏\n\n${aiResult.text}`);
+            await sendButtonMessage(
+              from,
+              "Or would you like to browse our available properties?",
+              [{ id: "view_properties", title: "🏠 Browse Properties" }],
+              "Devtraco Plus",
+              ""
+            );
+            if (aiResult.scheduleViewing) {
+              await handleViewingSchedule(from, aiResult.scheduleViewing);
+            }
           } else {
-            await sendTextMessage(from, `Thank you for your consent, *${session.leadData.name}*! 🙏\n\nYou now have full access. How may I assist you today?`);
+            const title = getNameTitle(session.leadData.name);
+            const addressed = title ? `${title} ${session.leadData.name}` : session.leadData.name;
+            await sendTextMessage(from, `Thank you for your consent, *${addressed}*! 🙏\n\nYou now have full access. How may I assist you today?`);
             setTimeout(() => sendMainMenu(from), 1500);
           }
         }
@@ -371,7 +380,7 @@ export async function handleIncomingMessage(messagePayload) {
     let intent = null;
 
     // Extract name from phrases like "My name is John" or "I'm John"
-    const nameMatch = name.match(/(?:my name is|i'm|i am|it's|call me)\s+(.+)/i);
+    const nameMatch = name.match(/(?:my name is|i(?:'m|\s+am)|\bam\b|it's|call me)\s+(.+)/i);
     if (nameMatch) name = nameMatch[1].trim();
 
     // Separate name from additional intent (e.g. "John, I need a 3-bed apartment")
