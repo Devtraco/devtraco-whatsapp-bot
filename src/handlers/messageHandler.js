@@ -393,6 +393,19 @@ export async function handleIncomingMessage(messagePayload) {
 
   // --- Name collection ---
   if (session.state === "AWAITING_NAME") {
+    // Guard: user sent media (image/video/doc) instead of their name.
+    // Save the intent and re-ask — do NOT treat the image description as a name.
+    if (["image", "video", "document"].includes(type)) {
+      session.metadata = session.metadata || {};
+      session.metadata.pendingIntent = userText; // e.g. "[Image: I need info on this]"
+      await updateLeadData(from, {}); // persist
+      await sendTextMessage(
+        from,
+        `I'd be very glad to help you with that! 😊\n\nBefore I do, could I please know your name? It helps me personalise your experience.\n\nWhat should I call you?`
+      );
+      return;
+    }
+
     let name = userText.trim();
     let intent = null;
 

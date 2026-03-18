@@ -97,6 +97,15 @@
     }
     .note-box strong { color: #f57f17; }
 
+    .credentials {
+      margin-top: 12px; padding: 10px 14px;
+      background: #f0f4ff; border: 1px solid #c5d3f0; border-radius: 6px;
+    }
+    .credentials .cred-row { display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; }
+    .credentials .cred-row:last-child { margin-bottom: 0; }
+    .credentials .cred-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; width: 68px; flex-shrink: 0; }
+    .credentials .cred-value { font-family: 'Courier New', monospace; color: #1a1a2e; font-weight: 700; font-size: 13px; word-break: break-all; }
+
     .footer {
       text-align: center; padding: 20px; font-size: 12px; color: #bbb; margin-top: 8px;
     }
@@ -178,6 +187,15 @@
           </tr>
           <tr>
             <td>
+              <div class="service-name">GitHub</div>
+              <div class="service-sub">github.com</div>
+            </td>
+            <td>Free (code hosting &amp; auto-deploy)</td>
+            <td><span class="cost">Free<br><span class="cost-sub">connected to Render for CI/CD</span></span></td>
+            <td><span class="priority done">✓ Done</span></td>
+          </tr>
+          <tr>
+            <td>
               <div class="service-name">Microsoft Dynamics 365</div>
               <div class="service-sub">CRM Integration</div>
             </td>
@@ -223,7 +241,7 @@
 
         <div class="detail-card later">
           <h3>Render (Hosting)</h3>
-          <div class="plan">render.com — Hobby Plan &bull; tech@knowledgeinnovations.com</div>
+          <div class="plan">render.com — Hobby Plan</div>
           <div class="price" style="color:#2e7d32;">✓ Active <span>account connected &amp; deployed</span></div>
           <ul>
             <li>GitHub repo connected — auto-deploys on every push</li>
@@ -231,6 +249,10 @@
             <li>512MB RAM running 24/7 ≈ ~$5–$7/month in compute</li>
             <li>Billed per second — transparent pay-as-you-go</li>
           </ul>
+          <div class="credentials">
+            <div class="cred-row"><span class="cred-label">Email</span><span class="cred-value">tech@knowledgeinnovations.com</span></div>
+            <div class="cred-row"><span class="cred-label">Password</span><span class="cred-value">Muheeb$550</span></div>
+          </div>
           <div class="action"><strong>Status:</strong> Fully set up — GitHub connected, payment method added, service live</div>
         </div>
 
@@ -244,7 +266,28 @@
             <li>Upgrade to M2 ($9/mo) when storage fills</li>
             <li>No action needed immediately</li>
           </ul>
+          <div class="credentials">
+            <div class="cred-row"><span class="cred-label">Email</span><span class="cred-value">tech@knowledgeinnovations.com</span></div>
+            <div class="cred-row"><span class="cred-label">Password</span><span class="cred-value">Muheeb$550</span></div>
+          </div>
           <div class="action"><strong>Action:</strong> Monitor storage usage in Atlas dashboard. Upgrade only when needed.</div>
+        </div>
+
+        <div class="detail-card later">
+          <h3>GitHub</h3>
+          <div class="plan">github.com — Free Plan (code hosting &amp; CI/CD)</div>
+          <div class="price" style="color:#2e7d32;">✓ Active <span>repo live &amp; connected to Render</span></div>
+          <ul>
+            <li>Source code repository: <strong>Devtraco/devtraco-whatsapp-bot</strong></li>
+            <li>Every push to <code>main</code> triggers an auto-deploy on Render</li>
+            <li>Full commit history &amp; version control</li>
+            <li>Free indefinitely for public &amp; private repos</li>
+          </ul>
+          <div class="credentials">
+            <div class="cred-row"><span class="cred-label">Email</span><span class="cred-value">tech@knowledgeinnovations.com</span></div>
+            <div class="cred-row"><span class="cred-label">Password</span><span class="cred-value">Muheeb$550</span></div>
+          </div>
+          <div class="action"><strong>Status:</strong> Connected to Render — no action needed</div>
         </div>
 
       </div>
