@@ -156,7 +156,7 @@
             </td>
             <td>Free tier + pay-per-conversation</td>
             <td><span class="cost">Free every month<br><span class="cost-sub">~$0.02–$0.05 /conversation after 1,000/mo</span></span></td>
-            <td><span class="priority done">✓ Done</span></td>
+            <td><span class="priority soon">⚠ Card Needed</span></td>
           </tr>
           <tr>
             <td>
@@ -172,9 +172,9 @@
               <div class="service-name">Render (Hosting)</div>
               <div class="service-sub">render.com</div>
             </td>
-            <td>Hobby Plan + Compute</td>
-            <td><span class="cost">$0 /mo plan<br><span class="cost-sub">+ ~$5–$7 compute for 24/7 uptime</span></span></td>
-            <td><span class="priority done">✓ Done</span></td>
+            <td>Starter (Compute) — no Pro needed</td>
+            <td><span class="cost">~$7 /mo<br><span class="cost-sub">add card to Render to activate</span></span></td>
+            <td><span class="priority soon">⚠ Card Needed</span></td>
           </tr>
           <tr>
             <td>
@@ -212,18 +212,18 @@
       <div class="section-title">Service Details &amp; Setup Actions</div>
       <div class="detail-grid">
 
-        <div class="detail-card later">
+        <div class="detail-card soon">
           <h3>Meta WhatsApp Business API</h3>
           <div class="plan">business.facebook.com — App ID: 5177850099107018</div>
-          <div class="price" style="color:#2e7d32;">✓ Active <span>account set up under Devtraco Plus</span></div>
+          <div class="price" style="color:#e65100;">⚠ Card not yet added <span>— add card to cover overage conversations</span></div>
           <ul>
             <li><strong>1,000 free service conversations every month</strong> — resets on the 1st of each month, not a one-time allowance</li>
             <li>~$0.02–$0.05 per conversation beyond the 1,000</li>
             <li>The free 1,000 applies to user-initiated (incoming) chats only</li>
             <li>Business-initiated (outbound template) messages are billed separately</li>
-            <li>Add a payment method to avoid interruption if the monthly limit is exceeded</li>
+            <li>Without a card, the bot stops responding when the 1,000 limit is hit</li>
           </ul>
-          <div class="action"><strong>Remaining:</strong> Add a credit/debit card in Meta Business Manager → Billing Settings to cover any overage</div>
+          <div class="action"><strong>Action (do when ready):</strong> Log in to business.facebook.com → Settings → Billing → Add a credit/debit card. No charge unless the 1,000 free conversations are exceeded.</div>
         </div>
 
         <div class="detail-card later">
@@ -239,21 +239,22 @@
           <div class="action"><strong>Status:</strong> Already paid and configured — no action needed</div>
         </div>
 
-        <div class="detail-card later">
+        <div class="detail-card soon">
           <h3>Render (Hosting)</h3>
-          <div class="plan">render.com — Hobby Plan</div>
-          <div class="price" style="color:#2e7d32;">✓ Active <span>account connected &amp; deployed</span></div>
+          <div class="plan">render.com — Starter Instance (Compute Plan)</div>
+          <div class="price" style="color:#e65100;">⚠ Card not yet added <span>— add card to keep bot awake 24/7</span></div>
           <ul>
-            <li>GitHub repo connected — auto-deploys on every push</li>
-            <li>Hobby plan: $0/month — pay only for compute used</li>
-            <li>512MB RAM running 24/7 ≈ ~$5–$7/month in compute</li>
-            <li>Billed per second — transparent pay-as-you-go</li>
+            <li>GitHub repo connected — auto-deploys on every push to <code>main</code></li>
+            <li><strong>Free tier is NOT suitable</strong> — server sleeps after 15 min. WhatsApp messages sent during sleep are silently dropped</li>
+            <li><strong>Starter instance ($7–8/mo)</strong> keeps the bot awake 24/7 — no cold starts, no missed messages</li>
+            <li><strong>Pro / Standard plan ($25+/mo) is NOT needed</strong> — this bot is lightweight (no local AI model, all processing via external APIs)</li>
+            <li>512MB RAM is more than enough for this Node.js bot</li>
           </ul>
           <div class="credentials">
             <div class="cred-row"><span class="cred-label">Email</span><span class="cred-value">tech@knowledgeinnovations.com</span></div>
-            <div class="cred-row"><span class="cred-label">Password</span><span class="cred-value">Muheeb$550</span></div>
+            <div class="cred-row"><span class="cred-label">Password</span><span class="cred-value">New@AIprj2026%</span></div>
           </div>
-          <div class="action"><strong>Status:</strong> Fully set up — GitHub connected, payment method added, service live</div>
+          <div class="action"><strong>Action (do when ready):</strong> Log in to render.com → Billing → Add a credit/debit card. The Starter instance costs ~$7/mo. No plan upgrade needed — just a card on file.</div>
         </div>
 
         <div class="detail-card later">
@@ -268,7 +269,7 @@
           </ul>
           <div class="credentials">
             <div class="cred-row"><span class="cred-label">Email</span><span class="cred-value">tech@knowledgeinnovations.com</span></div>
-            <div class="cred-row"><span class="cred-label">Password</span><span class="cred-value">Muheeb$550</span></div>
+            <div class="cred-row"><span class="cred-label">Password</span><span class="cred-value">New@AIprj2026%</span></div>
           </div>
           <div class="action"><strong>Action:</strong> Monitor storage usage in Atlas dashboard. Upgrade only when needed.</div>
         </div>
@@ -285,7 +286,7 @@
           </ul>
           <div class="credentials">
             <div class="cred-row"><span class="cred-label">Email</span><span class="cred-value">tech@knowledgeinnovations.com</span></div>
-            <div class="cred-row"><span class="cred-label">Password</span><span class="cred-value">Muheeb$550</span></div>
+            <div class="cred-row"><span class="cred-label">Password</span><span class="cred-value">New@AIprj2026%</span></div>
           </div>
           <div class="action"><strong>Status:</strong> Connected to Render — no action needed</div>
         </div>
@@ -296,7 +297,7 @@
     <!-- Note -->
     <div class="section">
       <div class="note-box">
-        <strong>Current Status:</strong> All services are fully set up and running under Devtraco Plus's own accounts. Meta WhatsApp API, OpenAI, Render (GitHub connected, auto-deploy active), and MongoDB Atlas are all live. The only remaining step is adding a <strong>payment method on Meta Business Manager</strong> to cover any conversations beyond the free 1,000/month.
+        <strong>Current Status:</strong> All services are set up and the bot is deployed. Meta WhatsApp API, OpenAI, Render (GitHub connected, auto-deploy active), and MongoDB Atlas are all configured. Two remaining steps: (1) <strong>Add a payment card on Render</strong> — Starter instance ~$7/mo, no Pro plan needed; (2) <strong>Add a payment card on Meta Business Manager</strong> to cover conversations beyond the free 1,000/month. Both can be done whenever ready.
       </div>
     </div>
 
