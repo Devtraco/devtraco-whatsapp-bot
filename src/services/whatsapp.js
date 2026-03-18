@@ -103,6 +103,33 @@ export async function sendListMessage(to, bodyText, buttonText, sections, header
 }
 
 /**
+ * Get the temporary download URL for a WhatsApp media object.
+ * Returns a URL valid for ~5 minutes; must be downloaded promptly.
+ */
+export async function getMediaUrl(mediaId) {
+  const response = await axios.get(
+    `https://graph.facebook.com/${whatsapp.apiVersion}/${mediaId}`,
+    { headers: getHeaders(), timeout: 10000 }
+  );
+  return response.data.url;
+}
+
+/**
+ * Download WhatsApp media bytes and return { base64, mimeType }.
+ * The Authorization header is required — Meta blocks anonymous downloads.
+ */
+export async function downloadMediaAsBase64(mediaUrl) {
+  const response = await axios.get(mediaUrl, {
+    headers: getHeaders(),
+    responseType: "arraybuffer",
+    timeout: 30000,
+  });
+  const base64 = Buffer.from(response.data).toString("base64");
+  const mimeType = response.headers["content-type"] || "image/jpeg";
+  return { base64, mimeType };
+}
+
+/**
  * Mark a message as read
  */
 export async function markAsRead(messageId) {

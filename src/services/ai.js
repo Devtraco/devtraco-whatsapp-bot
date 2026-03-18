@@ -192,7 +192,7 @@ export function invalidatePromptCache() {
 /**
  * Generate a response from GPT-4o mini
  */
-export async function generateResponse(conversationHistory, leadData = null) {
+export async function generateResponse(conversationHistory, leadData = null, imageData = null) {
   try {
     const t0 = Date.now();
     const systemPrompt = await buildSystemPrompt();
@@ -218,12 +218,27 @@ export async function generateResponse(conversationHistory, leadData = null) {
       });
     }
 
-    // Add the actual conversation history
+    // Add the actual conversation history.
+    // If the user sent an image, upgrade the last user message to a vision content array.
     messages.push(
-      ...recentHistory.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      }))
+      ...recentHistory.map((msg, i) => {
+        if (imageData && i === recentHistory.length - 1 && msg.role === "user") {
+          return {
+            role: "user",
+            content: [
+              { type: "text", text: msg.content },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:${imageData.mimeType};base64,${imageData.base64}`,
+                  detail: "low",
+                },
+              },
+            ],
+          };
+        }
+        return { role: msg.role, content: msg.content };
+      })
     );
 
     const completion = await openai.chat.completions.create({

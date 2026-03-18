@@ -9,6 +9,8 @@ import {
   sendVideoMessage,
   sendTemplateMessage,
   markAsRead,
+  getMediaUrl,
+  downloadMediaAsBase64,
 } from "../services/whatsapp.js";
 import { getAllProperties, getPropertyById, formatPropertyCard } from "../data/properties.js";
 import { createViewing, formatViewingPending, formatViewingConfirmed, getUserViewings, updateViewingStatus, resolveDate, resolveTime, formatDateNice, formatTimeNice, getAvailableSlots, validateBusinessHours, getNextBusinessDay, getViewingById } from "../services/viewingScheduler.js";
@@ -77,7 +79,7 @@ function isDuplicate(messageId) {
  * Main conversation handler — routes every incoming message through the AI pipeline.
  */
 export async function handleIncomingMessage(messagePayload) {
-  const { from, messageId, type, text, interactive } = normalizePayload(messagePayload);
+  const { from, messageId, type, text, interactive, media } = normalizePayload(messagePayload);
 
   if (!from || !messageId) return;
 
@@ -132,7 +134,7 @@ export async function handleIncomingMessage(messagePayload) {
   }
 
   const session = await getSession(from);
-  const userText = extractUserText(type, text, interactive);
+  const userText = extractUserText(type, text, interactive, media);
 
   if (!userText) return; // unsupported message type
 
@@ -576,8 +578,21 @@ export async function handleIncomingMessage(messagePayload) {
 
   // --- AI conversation pipeline ---
   const pipelineStart = Date.now();
+
+  // For image messages, download and send to AI Vision for analysis
+  let imageData = null;
+  if (type === "image" && media?.id) {
+    try {
+      const mediaUrl = await getMediaUrl(media.id);
+      imageData = await downloadMediaAsBase64(mediaUrl);
+      console.log(`[Media] Downloaded image for vision analysis (${imageData.mimeType})`);
+    } catch (err) {
+      console.error("[Media] Failed to download image:", err.message);
+    }
+  }
+
   await addMessage(from, "user", userText);
-  const aiResult = await generateAIResponseFull(from, session);
+  const aiResult = await generateAIResponseFull(from, session, imageData);
   const aiDone = Date.now();
 
   // --- Fallback scheduling: AI confirmed intent but didn't emit the tag ---
@@ -738,8 +753,8 @@ export async function handleIncomingMessage(messagePayload) {
 /**
  * Full AI response with structured data
  */
-async function generateAIResponseFull(from, session) {
-  const result = await generateResponse(session.history, session.leadData);
+async function generateAIResponseFull(from, session, imageData = null) {
+  const result = await generateResponse(session.history, session.leadData, imageData);
   await addMessage(from, "assistant", result.text);
   return result;
 }
@@ -1229,6 +1244,28 @@ async function confirmAndCreateViewing(to, pendingData) {
         await sendTextMessage(to, formatViewingConfirmed(confirmed));
         console.log(`[Viewing] Auto-confirmed ${viewing.viewingId} for ${to}`);
 
+        // Notify agent immediately of confirmed viewing
+        try {
+          const agentNumber = config.company.escalationWhatsApp.replace("+", "");
+          const dateDisp = formatDateNice(confirmed.preferredDate);
+          const timeDisp = formatTimeNice(confirmed.preferredTime);
+          await sendTextMessage(
+            agentNumber,
+            `📅 *New Viewing Confirmed*\n\n` +
+            `👤 *Client:* ${confirmed.name || "Not provided"}\n` +
+            `📱 *Phone:* +${to}\n` +
+            `📧 *Email:* ${confirmed.email || "Not provided"}\n` +
+            `🏠 *Property:* ${confirmed.propertyName || "Not specified"}\n` +
+            `📆 *Date:* ${dateDisp}\n` +
+            `⏰ *Time:* ${timeDisp}\n` +
+            `📋 *Reference:* ${confirmed.viewingId}\n\n` +
+            `Reply to client: wa.me/${to}`
+          );
+          console.log(`[Viewing] Agent notified of confirmed viewing ${confirmed.viewingId}`);
+        } catch (agentErr) {
+          console.error(`[Viewing] Failed to notify agent of confirmed viewing:`, agentErr.message);
+        }
+
         // NOTE: Auto-email disabled — agent handles confirmation manually
         // Send email if we have one\n        // if (freshSession.leadData?.email && freshSession.leadData.email !== "Not provided") {
         //   await sendViewingConfirmationEmail(freshSession.leadData.email, confirmed);
@@ -1429,19 +1466,23 @@ async function handleAgentResponse(clientNumber, action, agentNumber) {
  * Normalize the incoming WhatsApp payload
  */
 function normalizePayload(messagePayload) {
+  const type = messagePayload.type;
+  const mediaTypes = ["image", "video", "document", "audio", "sticker"];
+  const raw = mediaTypes.includes(type) ? messagePayload[type] : null;
   return {
     from: messagePayload.from,
     messageId: messagePayload.id,
-    type: messagePayload.type,
+    type,
     text: messagePayload.text?.body || "",
     interactive: messagePayload.interactive || null,
+    media: raw ? { id: raw.id, caption: raw.caption || "", mimeType: raw.mime_type || "" } : null,
   };
 }
 
 /**
  * Extract readable user text from different message types
  */
-function extractUserText(type, text, interactive) {
+function extractUserText(type, text, interactive, media) {
   switch (type) {
     case "text":
       return text;
@@ -1454,9 +1495,11 @@ function extractUserText(type, text, interactive) {
       }
       return null;
     case "image":
+      return media?.caption ? `[Image: ${media.caption}]` : "[User sent an image]";
     case "video":
+      return media?.caption ? `[Video: ${media.caption}]` : "[User sent a video]";
     case "document":
-      return "I sent a media file";
+      return media?.caption ? `[Document: ${media.caption}]` : "[User sent a document]";
     case "location":
       return "I shared my location";
     default:
