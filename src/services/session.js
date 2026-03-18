@@ -121,9 +121,11 @@ async function resetSession(userId, oldSession) {
   return session;
 }
 
-export async function addMessage(userId, role, content) {
+export async function addMessage(userId, role, content, mediaUrl = null) {
   const session = await getSession(userId);
-  session.history.push({ role, content, timestamp: Date.now() });
+  const msg = { role, content, timestamp: Date.now() };
+  if (mediaUrl) msg.mediaUrl = mediaUrl;
+  session.history.push(msg);
 
   if (session.history.length > config.session.maxHistory) {
     session.history = session.history.slice(-config.session.maxHistory);

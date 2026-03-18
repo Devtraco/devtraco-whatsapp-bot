@@ -4,6 +4,7 @@ const messageSchema = new mongoose.Schema({
   role:      { type: String, enum: ["user", "assistant"], required: true },
   content:   { type: String, required: true },
   timestamp: { type: Number, default: Date.now },
+  mediaUrl:  { type: String, default: null },
 }, { _id: false });
 
 const leadDataSchema = new mongoose.Schema({

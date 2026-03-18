@@ -16,6 +16,9 @@ import { getAllProperties, getPropertyById, formatPropertyCard } from "../data/p
 import { createViewing, formatViewingPending, formatViewingConfirmed, getUserViewings, updateViewingStatus, resolveDate, resolveTime, formatDateNice, formatTimeNice, getAvailableSlots, validateBusinessHours, getNextBusinessDay, getViewingById } from "../services/viewingScheduler.js";
 import { sendViewingConfirmationEmail } from "../services/email.js";
 import config from "../config/index.js";
+import { writeFile, mkdir } from "fs/promises";
+import { existsSync } from "fs";
+import path from "path";
 
 // Base URL for serving uploaded images (needed for WhatsApp absolute URLs)
 const BASE_URL = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `http://localhost:${config.port}`;
@@ -581,17 +584,25 @@ export async function handleIncomingMessage(messagePayload) {
 
   // For image messages, download and send to AI Vision for analysis
   let imageData = null;
+  let imageLocalUrl = null;
   if (type === "image" && media?.id) {
     try {
       const mediaUrl = await getMediaUrl(media.id);
       imageData = await downloadMediaAsBase64(mediaUrl);
-      console.log(`[Media] Downloaded image for vision analysis (${imageData.mimeType})`);
+      // Save to public/uploads/ so the dashboard can display it permanently
+      const uploadsDir = path.join(process.cwd(), "public", "uploads");
+      if (!existsSync(uploadsDir)) await mkdir(uploadsDir, { recursive: true });
+      const ext = imageData.mimeType.includes("png") ? "png" : "jpg";
+      const filename = `${Date.now()}-${from}.${ext}`;
+      await writeFile(path.join(uploadsDir, filename), Buffer.from(imageData.base64, "base64"));
+      imageLocalUrl = `/static/uploads/${filename}`;
+      console.log(`[Media] Downloaded image for vision analysis (${imageData.mimeType}), saved to ${imageLocalUrl}`);
     } catch (err) {
       console.error("[Media] Failed to download image:", err.message);
     }
   }
 
-  await addMessage(from, "user", userText);
+  await addMessage(from, "user", userText, imageLocalUrl);
   const aiResult = await generateAIResponseFull(from, session, imageData);
   const aiDone = Date.now();
 

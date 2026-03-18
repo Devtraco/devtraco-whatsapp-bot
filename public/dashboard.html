@@ -1403,9 +1403,13 @@
       }
       body.innerHTML = data.history.map(msg => {
         const ts = msg.timestamp ? `<div style="font-size:10px;opacity:0.5;margin-top:3px;">${fmtDateTime(msg.timestamp)}</div>` : '';
+        const mediaHtml = msg.mediaUrl
+          ? `<img src="${msg.mediaUrl}" style="max-width:200px;border-radius:6px;display:block;margin-bottom:4px;" loading="lazy" />`
+          : '';
+        const textHtml = (!msg.mediaUrl || !msg.content.startsWith('[')) ? escapeHtml(msg.content) : '';
         return `
           <div class="chat-bubble ${msg.role === 'user' ? 'chat-user' : 'chat-bot'}">
-            ${escapeHtml(msg.content)}${ts}
+            ${mediaHtml}${textHtml}${ts}
           </div>`;
       }).join('');
       body.scrollTop = body.scrollHeight;
@@ -1444,12 +1448,17 @@
         return;
       }
 
-      container.innerHTML = data.history.map(msg => `
-        <div class="chat-bubble ${msg.role === 'user' ? 'chat-user' : 'chat-bot'}">
-          ${escapeHtml(msg.content)}
-          <div class="chat-time">${new Date(msg.timestamp).toLocaleTimeString()}</div>
-        </div>
-      `).join('');
+      container.innerHTML = data.history.map(msg => {
+        const mediaHtml = msg.mediaUrl
+          ? `<img src="${msg.mediaUrl}" style="max-width:200px;border-radius:6px;display:block;margin-bottom:4px;" loading="lazy" />`
+          : '';
+        const textHtml = (!msg.mediaUrl || !msg.content.startsWith('[')) ? escapeHtml(msg.content) : '';
+        return `
+          <div class="chat-bubble ${msg.role === 'user' ? 'chat-user' : 'chat-bot'}">
+            ${mediaHtml}${textHtml}
+            <div class="chat-time">${new Date(msg.timestamp).toLocaleTimeString()}</div>
+          </div>`;
+      }).join('');
 
       container.scrollTop = container.scrollHeight;
     } catch (err) {
