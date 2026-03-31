@@ -1483,44 +1483,55 @@ async function sendPropertyList(to, category = null) {
   // Get properties filtered by category if specified
   const properties = category ? await getPropertiesByCategory(category) : await getAllProperties();
 
-  // Split into sections of max 10 total rows
+  // WhatsApp enforces max 10 TOTAL rows across all sections
   const apartments = properties.filter(p => p.type === "Apartments" || p.type === "Hotel Apartments");
   const townhouses = properties.filter(p => p.type === "Townhouses" || p.type === "Townhomes");
   const land = properties.filter(p => p.type === "Land");
 
   const sections = [];
+  let totalRows = 0;
+  const MAX_TOTAL_ROWS = 10;
 
+  // Add apartments (prioritize these)
   if (apartments.length > 0) {
+    const apartmentCount = Math.min(apartments.length, 6);
     sections.push({
       title: "Apartments",
-      rows: apartments.slice(0, 7).map((p) => ({
+      rows: apartments.slice(0, apartmentCount).map((p) => ({
         id: `property_${p.id}`,
         title: p.name.slice(0, 24),
         description: `${p.location} — From $${p.priceFrom.toLocaleString()}${p.status === "Sold Out" ? " (Sold Out)" : ""}`.slice(0, 72),
       })),
     });
+    totalRows += apartmentCount;
   }
 
-  if (townhouses.length > 0) {
+  // Add townhouses if room
+  if (townhouses.length > 0 && totalRows < MAX_TOTAL_ROWS) {
+    const townhouseCount = Math.min(townhouses.length, MAX_TOTAL_ROWS - totalRows);
     sections.push({
       title: "Townhouses & Townhomes",
-      rows: townhouses.slice(0, 3).map((p) => ({
+      rows: townhouses.slice(0, townhouseCount).map((p) => ({
         id: `property_${p.id}`,
         title: p.name.slice(0, 24),
         description: `${p.location} — From $${p.priceFrom.toLocaleString()}${p.status === "Sold Out" ? " (Sold Out)" : ""}`.slice(0, 72),
       })),
     });
+    totalRows += townhouseCount;
   }
 
-  if (land.length > 0) {
+  // Add land if room
+  if (land.length > 0 && totalRows < MAX_TOTAL_ROWS) {
+    const landCount = Math.min(land.length, MAX_TOTAL_ROWS - totalRows);
     sections.push({
       title: "Land Investments",
-      rows: land.slice(0, 3).map((p) => ({
+      rows: land.slice(0, landCount).map((p) => ({
         id: `property_${p.id}`,
         title: p.name.slice(0, 24),
         description: `${p.location} — From $${p.priceFrom > 0 ? p.priceFrom.toLocaleString() : "Contact for price"}${p.status === "Sold Out" ? " (Sold Out)" : ""}`.slice(0, 72),
       })),
     });
+    totalRows += landCount;
   }
 
   // If no sections found, send a text message instead
