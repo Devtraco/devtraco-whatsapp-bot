@@ -90,6 +90,7 @@ const config = {
     tone: "premium",
     businessHours: "Monday – Friday, 8:00 AM – 5:00 PM",
     brandColors: { primary: "#000000", secondary: "#FFFFFF", accent: "Corporate Gold" },
+    catalogueUrl: process.env.CATALOGUE_URL || "https://devtracoplus.com/catalogue.pdf", // Catalogue PDF link
   },
 };
 

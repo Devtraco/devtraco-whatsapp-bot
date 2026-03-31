@@ -20,6 +20,7 @@ const DEFAULT_PROPERTIES = [
     currency: "USD",
     amenities: [],
     status: "Now Selling",
+    category: "residential",
     images: ["https://devtracoplus.com/site/assets/files/1409/arlo-image-975-x-620.jpg"],
     projectUrl: "https://arlo.devtracoplus.com",
     description: "Anchored in the prestigious and serene suburb of Cantonments, ARLO is a curated collection of residences ranging from studios to three-bedroom apartments.",
@@ -34,6 +35,7 @@ const DEFAULT_PROPERTIES = [
     currency: "USD",
     amenities: [],
     status: "Now Selling",
+    category: "residential",
     images: ["https://devtracoplus.com/site/assets/files/1399/address.jpg"],
     projectUrl: "https://theaddress.devtracoplus.com",
     description: "A prestigious collection of luxury apartments in Roman Ridge. The Address comes in studio, 1, 2 & 3 bedroom apartments and Penthouses.",
@@ -48,6 +50,7 @@ const DEFAULT_PROPERTIES = [
     currency: "USD",
     amenities: ["Private Parking", "Broadband/Wi-Fi", "Intercom", "Concierge", "24/7 Security", "Gym", "Rooftop Pool", "Generator", "Water Reservoir"],
     status: "Now Selling",
+    category: "residential",
     images: [
       "https://devtracoplus.com/site/assets/files/1202/660_x_371_exterior_1a.768x0.jpg",
       "https://devtracoplus.com/site/assets/files/1202/660_x_371_aerial_1.768x0.jpg",
@@ -68,6 +71,7 @@ const DEFAULT_PROPERTIES = [
     currency: "USD",
     amenities: ["Concierge", "Swimming Pool", "Tennis Court", "Gym", "Children's Playground", "Secure Parking", "Landscaped Gardens", "24/7 Security", "Café/Lounge", "Spa & Sauna", "Conference Centre"],
     status: "Now Selling",
+    category: "residential",
     images: [
       "https://devtracoplus.com/site/assets/files/1307/night-shot.768x0.jpg",
       "https://devtracoplus.com/site/assets/files/1307/nova-project-header-image.768x0.jpg",
@@ -88,6 +92,7 @@ const DEFAULT_PROPERTIES = [
     currency: "USD",
     amenities: ["Rooftop Pool (Sky Lounge)", "Gym", "24/7 Security", "Concierge", "Generator", "Water Reservoir", "Elevator", "Estate Management"],
     status: "Sold Out",
+    category: "residential",
     images: [
       "https://devtracoplus.com/site/assets/files/1081/660x371_full_view.768x0.jpg",
       "https://devtracoplus.com/site/assets/files/1081/660x371_cantonments_apartmentfinal1.768x0.jpg",
@@ -107,6 +112,7 @@ const DEFAULT_PROPERTIES = [
     currency: "USD",
     amenities: ["Broadband/Wi-Fi", "Intercom", "Concierge", "24/7 Security", "Gym", "Pool House", "Generator", "Gated Community", "Estate Management"],
     status: "Now Selling",
+    category: "residential",
     images: [
       "https://devtracoplus.com/site/assets/files/1025/ag-6.768x0.jpg",
       "https://devtracoplus.com/site/assets/files/1025/ag-5.768x0.jpg",
@@ -126,6 +132,7 @@ const DEFAULT_PROPERTIES = [
     currency: "USD",
     amenities: ["Gym", "Swimming Pool", "Concierge", "Underground Parking", "Generator", "Water Reservoir", "High Speed Broadband", "24/7 Security", "DSTV"],
     status: "Sold Out",
+    category: "residential",
     images: [
       "https://devtracoplus.com/site/assets/files/1334/day-view.768x0.jpg",
       "https://devtracoplus.com/site/assets/files/1334/main-entrance.768x0.jpg",
@@ -145,6 +152,7 @@ const DEFAULT_PROPERTIES = [
     currency: "USD",
     amenities: ["Gated Community"],
     status: "Now Selling",
+    category: "residential",
     images: ["https://devtracoplus.com/site/assets/files/1336/about-forte.jpg"],
     projectUrl: "https://forte.devtracoplus.com",
     description: "Luxury living in a gated community. 2 to 4.5-bedroom townhouses that take residential living to the next level.",
@@ -159,6 +167,7 @@ const DEFAULT_PROPERTIES = [
     currency: "USD",
     amenities: ["Hotel Investment", "Managed Returns"],
     status: "Now Selling",
+    category: "residential",
     images: ["https://devtracoplus.com/site/assets/files/1347/pelican_ext_02_night_landscape.jpg"],
     projectUrl: "https://pelican.devtracoplus.com",
     description: "Invest in a hotel apartment in Accra. A proven and successful hotel investment model with managed returns.",
@@ -173,6 +182,7 @@ const DEFAULT_PROPERTIES = [
     currency: "USD",
     amenities: ["Underground Parking", "Broadband/Wi-Fi", "Intercom", "Concierge", "24/7 Security", "Gym", "Pool House", "Generator", "Gated Community", "Estate Management"],
     status: "Sold Out",
+    category: "residential",
     images: [
       "https://devtracoplus.com/site/assets/files/1072/devp-24.768x0.jpg",
       "https://devtracoplus.com/site/assets/files/1072/niiyo2-copy2.768x0.jpg",
@@ -192,6 +202,7 @@ const DEFAULT_PROPERTIES = [
     currency: "USD",
     amenities: ["Smart Home System", "Air Conditioning", "Water Purification", "Standby Generator", "Video Entry", "Fire Detectors", "Pool", "Gym"],
     status: "Sold Out",
+    category: "residential",
     images: [
       "https://devtracoplus.com/site/assets/files/1050/dsc_0873-1.768x0.jpg",
       "https://devtracoplus.com/site/assets/files/1050/dsc_0898.768x0.jpg",
@@ -211,12 +222,44 @@ const DEFAULT_PROPERTIES = [
     currency: "USD",
     amenities: ["Private Lap Pool", "Rooftop Pool (Sky Lounge)", "Gym", "24/7 Security", "Concierge", "Private Elevator", "Generator", "Water Reservoir", "Estate Management"],
     status: "Sold Out",
+    category: "residential",
     images: [
       "https://devtracoplus.com/site/assets/files/1064/front-view-1.768x0.jpg",
       "https://devtracoplus.com/site/assets/files/1064/acasia-townhouse_exterior2.768x0.jpg"
     ],
     projectUrl: "https://devtracoplus.com/projects/acasia",
     description: "First class luxury 5-bedroom townhomes in Cantonments with a private lap pool on the topmost floor of each unit. Meticulous attention to detail with the finest materials.",
+  },
+  // Land Investment Properties
+  {
+    propertyId: "jute-land",
+    name: "Jute",
+    location: "[TBD - To be filled via admin dashboard]",
+    type: "Land",
+    bedrooms: [],
+    priceFrom: 0,
+    currency: "USD",
+    amenities: ["Land Investment", "Surveyed Plot"],
+    status: "Coming Soon",
+    category: "land_investment",
+    images: [],
+    projectUrl: "",
+    description: "[Land investment property - Details coming soon]",
+  },
+  {
+    propertyId: "orchid-land",
+    name: "Orchid",
+    location: "[TBD - To be filled via admin dashboard]",
+    type: "Land",
+    bedrooms: [],
+    priceFrom: 0,
+    currency: "USD",
+    amenities: ["Land Investment", "Surveyed Plot"],
+    status: "Coming Soon",
+    category: "land_investment",
+    images: [],
+    projectUrl: "",
+    description: "[Land investment property - Details coming soon]",
   },
 ];
 
@@ -343,6 +386,15 @@ export async function getPropertyById(id) {
   }
   const found = DEFAULT_PROPERTIES.find((p) => p.propertyId === id);
   return found ? defaultToProperty(found) : null;
+}
+
+export async function getPropertiesByCategory(category) {
+  if (!category || category === "all_catalogue") {
+    // Return all properties for "all_catalogue" or if no category specified
+    return getAllProperties();
+  }
+  const all = await getAllProperties();
+  return all.filter((p) => p.category === category);
 }
 
 export async function searchProperties({ location, type, minBudget, maxBudget, bedrooms } = {}) {

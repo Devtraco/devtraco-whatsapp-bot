@@ -11,6 +11,7 @@ const leadDataSchema = new mongoose.Schema({
   name:              String,
   email:             String,
   phone:             String,
+  country:           String,
   budget:            String,
   propertyInterest:  String,
   preferredLocation: String,

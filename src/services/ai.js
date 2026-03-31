@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import config from "../config/index.js";
-import { getAllProperties } from "../data/properties.js";
+import { getAllProperties, getPropertiesByCategory } from "../data/properties.js";
 
 const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
@@ -12,13 +12,14 @@ const PROMPT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 /**
  * Build the system prompt dynamically, with caching.
  */
-async function buildSystemPrompt() {
+async function buildSystemPrompt(category = null) {
   const now = Date.now();
   if (cachedPrompt && (now - promptCacheTime) < PROMPT_CACHE_TTL) {
     return cachedPrompt;
   }
 
-  const properties = await getAllProperties();
+  // Get properties filtered by category if specified
+  const properties = category ? await getPropertiesByCategory(category) : await getAllProperties();
   const propertyIds = properties.map((p) => p.propertyId || p.id).join(", ");
 
   // Build compact property context (fewer tokens = faster response)
@@ -197,10 +198,10 @@ export function invalidatePromptCache() {
 /**
  * Generate a response from GPT-4o mini
  */
-export async function generateResponse(conversationHistory, leadData = null, imageData = null) {
+export async function generateResponse(conversationHistory, leadData = null, imageData = null, category = null) {
   try {
     const t0 = Date.now();
-    const systemPrompt = await buildSystemPrompt();
+    const systemPrompt = await buildSystemPrompt(category);
     const t1 = Date.now();
 
     // Only send last N messages to keep input tokens low

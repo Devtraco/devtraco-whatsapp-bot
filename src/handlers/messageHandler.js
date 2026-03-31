@@ -12,7 +12,7 @@ import {
   getMediaUrl,
   downloadMediaAsBase64,
 } from "../services/whatsapp.js";
-import { getAllProperties, getPropertyById, formatPropertyCard } from "../data/properties.js";
+import { getAllProperties, getPropertyById, formatPropertyCard, getPropertiesByCategory } from "../data/properties.js";
 import { createViewing, formatViewingPending, formatViewingConfirmed, getUserViewings, updateViewingStatus, resolveDate, resolveTime, formatDateNice, formatTimeNice, getAvailableSlots, validateBusinessHours, getNextBusinessDay, getViewingById } from "../services/viewingScheduler.js";
 import { sendViewingConfirmationEmail } from "../services/email.js";
 import config from "../config/index.js";
@@ -366,6 +366,84 @@ export async function handleIncomingMessage(messagePayload) {
       await handleEscalation(from, "Customer requested human agent via menu");
       return;
     }
+
+    // Product selection buttons (from welcome flow)
+    if (interactiveId === "product_buying_home") {
+      session.metadata = session.metadata || {};
+      session.metadata.productIntent = "buying_home";
+      await updateLeadData(from, {});
+      await addMessage(from, "user", "Buying a Home");
+      await sendPropertyList(from, "residential");
+      await sendTextMessage(from, `\nEach property below will connect you with our sales team when you're ready:`);
+      await sendButtonMessage(
+        from,
+        "Select a property to learn more:",
+        [
+          { id: "back_to_product_intent", title: "< Back" },
+          { id: "speak_agent", title: "📞 Speak to Agent" },
+        ],
+        "Navigation"
+      );
+      return;
+    }
+
+    if (interactiveId === "product_land_investment") {
+      session.metadata = session.metadata || {};
+      session.metadata.productIntent = "land_investment";
+      await updateLeadData(from, {});
+      await addMessage(from, "user", "Investing in Land");
+      await sendPropertyList(from, "land_investment");
+      await sendTextMessage(from, `\nEach property below will connect you with our investment team when you're ready:`);
+      await sendButtonMessage(
+        from,
+        "Select a property to learn more:",
+        [
+          { id: "back_to_product_intent", title: "< Back" },
+          { id: "speak_agent", title: "📞 Speak to Agent" },
+        ],
+        "Navigation"
+      );
+      return;
+    }
+
+    if (interactiveId === "product_catalogue") {
+      session.metadata = session.metadata || {};
+      session.metadata.productIntent = "catalogue";
+      await updateLeadData(from, {});
+      await addMessage(from, "user", "Browse our catalogue");
+      const catalogueUrl = config.company.catalogueUrl;
+      await sendTextMessage(
+        from,
+        `📄 *Browse Our Complete Catalogue*\n\nAccess our full catalogue of properties:\n🔗 ${catalogueUrl}\n\nOr would you like to speak with one of our specialists to discuss your specific needs?`
+      );
+      await sendButtonMessage(
+        from,
+        "What would you like to do?",
+        [
+          { id: "back_to_product_intent", title: "< Back" },
+          { id: "speak_agent", title: "📞 Speak to Agent" },
+        ],
+        "Navigation"
+      );
+      return;
+    }
+
+    if (interactiveId === "back_to_product_intent") {
+      await updateState(from, "AWAITING_PRODUCT_INTENT");
+      await sendTextMessage(from, `\nWhat are you interested in?`);
+      await sendButtonMessage(
+        from,
+        "Choose one of the options below:",
+        [
+          { id: "product_buying_home", title: "1️⃣ Buying a Home" },
+          { id: "product_land_investment", title: "2️⃣ Investing in Land" },
+          { id: "product_catalogue", title: "3️⃣ Browse our catalogue" },
+        ],
+        "Product Selection",
+        "Devtraco Plus"
+      );
+      return;
+    }
   }
 
   // --- First message — show welcome, ask name + intent (GDPR shown after intent is known) ---
@@ -383,9 +461,7 @@ export async function handleIncomingMessage(messagePayload) {
       await updateLeadData(from, {}); // persist metadata
     }
 
-    const welcomeMsg = isInquiry && userText.trim().length > 10
-      ? `Welcome to Devtraco Plus! 🏡\n\nI'd be happy to help with your enquiry!\n\nMay I start with your name, please?`
-      : `Welcome to Devtraco Plus! 🏡\n\nIt's a pleasure to have you here.\n\nMay I have your name, and how I can assist you in finding your perfect home today?`;
+    const welcomeMsg = `Hello 👋 Welcome to Devtraco Plus\n\nLet's get you the right real estate investment option best for your needs.\n\nBefore we proceed, can you share:\n• Full Name\n• Country you are in?\n• Email Address\n\nLet's start with your full name:`;
     await addMessage(from, "assistant", welcomeMsg);
     await sendTextMessage(from, welcomeMsg);
     return;
@@ -401,7 +477,7 @@ export async function handleIncomingMessage(messagePayload) {
       await updateLeadData(from, {}); // persist
       await sendTextMessage(
         from,
-        `I'd be very glad to help you with that! 😊\n\nBefore I do, could I please know your name? It helps me personalise your experience.\n\nWhat should I call you?`
+        `I'd be very glad to help you with that! 😊\n\nBefore I do, could I please know your full name? It helps me personalise your experience.\n\nWhat should I call you?`
       );
       return;
     }
@@ -473,24 +549,118 @@ export async function handleIncomingMessage(messagePayload) {
     await addMessage(from, "user", userText);
 
     if (intent) {
-      // Name + intent given — store intent, show GDPR
+      // Name + intent given — store intent, move to country collection
       session.metadata = session.metadata || {};
       session.metadata.pendingIntent = intent;
+      session.metadata.inWelcomeFlow = true;
       await updateLeadData(from, {});
-      await sendConsentRequest(from, name, intent);
+      await updateState(from, "AWAITING_COUNTRY");
+      await sendTextMessage(from, `Thank you, *${name}*! 😊\n\nWhich country are you in?`);
     } else if (session.metadata?.pendingIntent) {
-      // Name only, but first message already had an inquiry stored — use it
-      await sendConsentRequest(from, name, session.metadata.pendingIntent);
+      // Name only, but first message already had an inquiry stored
+      session.metadata.inWelcomeFlow = true;
+      await updateLeadData(from, {});
+      await updateState(from, "AWAITING_COUNTRY");
+      await sendTextMessage(from, `Nice to meet you, *${name}*! 😊\n\nWhich country are you in?`);
     } else {
-      // Name only — ask for intent
-      await updateState(from, "AWAITING_INTENT");
-      await addMessage(from, "assistant", `Nice to meet you, ${name}! How may I assist you in finding your perfect home today?`);
-      await sendTextMessage(from, `Nice to meet you, *${name}*! 😊\n\nHow may I assist you in finding your perfect home today?`);
+      // Name only — move to country collection
+      session.metadata = session.metadata || {};
+      session.metadata.inWelcomeFlow = true;
+      await updateLeadData(from, {});
+      await updateState(from, "AWAITING_COUNTRY");
+      await addMessage(from, "assistant", `Nice to meet you, ${name}! Which country are you in?`);
+      await sendTextMessage(from, `Nice to meet you, *${name}*! 😊\n\nWhich country are you in?`);
     }
     return;
   }
 
-  // --- Intent collection (after name, before consent) ---
+  // --- Country collection (after name) ---
+  if (session.state === "AWAITING_COUNTRY") {
+    const country = userText.trim();
+
+    // Basic validation — accept any country-like input (at least 2 chars, no excessive symbols)
+    const looksLikeCountry = country.length >= 2 && country.length <= 100 &&
+      !country.includes('?') &&
+      !/^(?:ok|okay|yes|no|maybe|sure|fine|please|what|where|when|why|how)\b/i.test(country);
+
+    if (!looksLikeCountry) {
+      await addMessage(from, "user", userText);
+      await sendTextMessage(from, `Please provide a valid country name or location. For example: "Ghana", "United States", "United Kingdom", etc.`);
+      return;
+    }
+
+    await updateLeadData(from, { country });
+    await addMessage(from, "user", userText);
+    await updateState(from, "AWAITING_EMAIL");
+    await sendTextMessage(from, `Thank you! Now, could you please share your email address?\n\nYou can also type *skip* if you prefer to provide it later.`);
+    return;
+  }
+
+  // --- Email collection (early in welcome flow or after viewing confirmation) ---
+  if (session.state === "AWAITING_EMAIL") {
+    const emailMatch = userText.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+    const skipEmail = userText.trim().toLowerCase() === "skip";
+
+    if (emailMatch || skipEmail) {
+      const email = emailMatch ? emailMatch[0] : "Not provided";
+      if (emailMatch) {
+        await updateLeadData(from, { email });
+      }
+      await addMessage(from, "user", userText);
+
+      // Check if we're in the welcome flow or post-viewing
+      const inWelcomeFlow = session.metadata?.inWelcomeFlow;
+
+      if (inWelcomeFlow) {
+        // Welcome flow: transition to product intent selection
+        await updateState(from, "AWAITING_PRODUCT_INTENT");
+        delete session.metadata.inWelcomeFlow; // Clear flag
+        await updateLeadData(from, {});
+
+        if (emailMatch) {
+          await sendTextMessage(from, `📧 Thank you! We've noted your email: *${email}*`);
+        } else {
+          await sendTextMessage(from, `No problem! You can provide your email later if needed.`);
+        }
+
+        await sendTextMessage(from, `\nWhat are you interested in?`);
+        await sendButtonMessage(
+          from,
+          "Choose one of the options below:",
+          [
+            { id: "product_buying_home", title: "1️⃣ Buying a Home" },
+            { id: "product_land_investment", title: "2️⃣ Investing in Land" },
+            { id: "product_catalogue", title: "3️⃣ Browse our catalogue" },
+          ],
+          "Product Selection",
+          "Devtraco Plus"
+        );
+      } else {
+        // Post-viewing: acknowledge email and transition to ACTIVE
+        await updateState(from, "ACTIVE");
+        await sendTextMessage(from, `📧 Thank you! We've noted your email: *${email}*. A confirmation email is on its way.`);
+        await addMessage(from, "assistant", `Thank you, email noted: ${email}`);
+        await sendTextMessage(from, `Is there anything else I can help you with? 😊`);
+      }
+      return;
+    }
+
+    // Didn't look like an email — prompt again
+    if (!skipEmail) {
+      await sendTextMessage(from, `Please provide a valid email address, or type *skip* if you'd prefer not to.`);
+    }
+    return;
+  }
+
+  // --- Product intent selection (after country and email) ---
+  if (session.state === "AWAITING_PRODUCT_INTENT") {
+    // This state is primarily handled by interactive button replies (see below)
+    // If the user types text instead, ask them to use the buttons
+    await sendTextMessage(from, `Please use the buttons above to select your interest. 😊`);
+    return;
+  }
+
+  // --- Intent collection (kept for backward compatibility) ---
   if (session.state === "AWAITING_INTENT") {
     session.metadata = session.metadata || {};
     session.metadata.pendingIntent = userText;
@@ -500,39 +670,9 @@ export async function handleIncomingMessage(messagePayload) {
     return;
   }
 
-  // --- Email collection after viewing ---
-  if (session.state === "AWAITING_EMAIL") {
-    const emailMatch = userText.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
-    if (emailMatch) {
-      const email = emailMatch[0];
-      await updateLeadData(from, { email });
-      await updateState(from, "ACTIVE");
-      await addMessage(from, "user", userText);
-
-      // Acknowledge immediately — don't make user wait for email sending
-      await sendTextMessage(from, `📧 Thank you! We've noted your email: *${email}*. A confirmation email is on its way.`);
-      await addMessage(from, "assistant", `Thank you, email noted: ${email}`);
-      await sendTextMessage(from, `Is there anything else I can help you with? 😊`);
-
-      // Send confirmation email in background (don't block the response)
-      // NOTE: Auto-email disabled — agent handles confirmation manually
-      // const viewingId = session.metadata?.lastViewingId;
-      // if (viewingId) { ... }
-      return;
-    }
-
-    // User typed "skip" or "no" or didn't provide email
-    const skip = userText.trim().toLowerCase();
-    if (skip === "skip" || skip === "no" || skip === "no thanks" || skip === "later") {
-      await updateState(from, "ACTIVE");
-      await sendTextMessage(from, `No problem! If you'd like to provide your email later, just let me know. 😊\n\nIs there anything else I can help you with?`);
-      return;
-    }
-
-    // Didn't look like an email — prompt again
-    await sendTextMessage(from, `Please provide a valid email address, or type *skip* if you'd prefer not to.`);
-    return;
-  }
+  // --- Email collection after viewing (legacy path for direct email requests) ---
+  // NOTE: This section is now handled in the earlier AWAITING_EMAIL handler above
+  // It is no longer reachable since state checks email early in welcome flow
 
   // (Viewing confirmation step removed — viewings are now booked immediately)
 
@@ -778,7 +918,18 @@ export async function handleIncomingMessage(messagePayload) {
  * Full AI response with structured data
  */
 async function generateAIResponseFull(from, session, imageData = null) {
-  const result = await generateResponse(session.history, session.leadData, imageData);
+  // Determine category from user's product intent
+  let category = null;
+  const productIntent = session.metadata?.productIntent;
+  if (productIntent === "buying_home") {
+    category = "residential";
+  } else if (productIntent === "land_investment") {
+    category = "land_investment";
+  } else if (productIntent === "catalogue") {
+    category = "all_catalogue";
+  }
+
+  const result = await generateResponse(session.history, session.leadData, imageData, category);
   await addMessage(from, "assistant", result.text);
   return result;
 }
@@ -1349,14 +1500,17 @@ async function sendMainMenu(to) {
 /**
  * Send the property listing (WhatsApp allows max 10 rows per list)
  */
-async function sendPropertyList(to) {
-  const properties = await getAllProperties();
+async function sendPropertyList(to, category = null) {
+  // Get properties filtered by category if specified
+  const properties = category ? await getPropertiesByCategory(category) : await getAllProperties();
 
   // Split into sections of max 10 total rows
   const apartments = properties.filter(p => p.type === "Apartments" || p.type === "Hotel Apartments");
-  const houses = properties.filter(p => p.type === "Townhouses" || p.type === "Townhomes");
+  const townhouses = properties.filter(p => p.type === "Townhouses" || p.type === "Townhomes");
+  const land = properties.filter(p => p.type === "Land");
 
   const sections = [];
+
   if (apartments.length > 0) {
     sections.push({
       title: "Apartments",
@@ -1367,13 +1521,25 @@ async function sendPropertyList(to) {
       })),
     });
   }
-  if (houses.length > 0) {
+
+  if (townhouses.length > 0) {
     sections.push({
       title: "Townhouses & Townhomes",
-      rows: houses.slice(0, 3).map((p) => ({
+      rows: townhouses.slice(0, 3).map((p) => ({
         id: `property_${p.id}`,
         title: p.name.slice(0, 24),
         description: `${p.location} — From $${p.priceFrom.toLocaleString()}${p.status === "Sold Out" ? " (Sold Out)" : ""}`.slice(0, 72),
+      })),
+    });
+  }
+
+  if (land.length > 0) {
+    sections.push({
+      title: "Land Investments",
+      rows: land.slice(0, 3).map((p) => ({
+        id: `property_${p.id}`,
+        title: p.name.slice(0, 24),
+        description: `${p.location} — From $${p.priceFrom > 0 ? p.priceFrom.toLocaleString() : "Contact for price"}${p.status === "Sold Out" ? " (Sold Out)" : ""}`.slice(0, 72),
       })),
     });
   }
