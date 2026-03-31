@@ -367,23 +367,12 @@ export async function handleIncomingMessage(messagePayload) {
       return;
     }
 
-    // Product selection buttons (from welcome flow)
     if (interactiveId === "product_buying_home") {
       session.metadata = session.metadata || {};
       session.metadata.productIntent = "buying_home";
       await updateLeadData(from, {});
       await addMessage(from, "user", "Buying a Home");
       await sendPropertyList(from, "residential");
-      await sendTextMessage(from, `\nEach property below will connect you with our sales team when you're ready:`);
-      await sendButtonMessage(
-        from,
-        "Select a property to learn more:",
-        [
-          { id: "back_to_product_intent", title: "< Back" },
-          { id: "speak_agent", title: "📞 Speak to Agent" },
-        ],
-        "Navigation"
-      );
       return;
     }
 
@@ -393,16 +382,6 @@ export async function handleIncomingMessage(messagePayload) {
       await updateLeadData(from, {});
       await addMessage(from, "user", "Investing in Land");
       await sendPropertyList(from, "land_investment");
-      await sendTextMessage(from, `\nEach property below will connect you with our investment team when you're ready:`);
-      await sendButtonMessage(
-        from,
-        "Select a property to learn more:",
-        [
-          { id: "back_to_product_intent", title: "< Back" },
-          { id: "speak_agent", title: "📞 Speak to Agent" },
-        ],
-        "Navigation"
-      );
       return;
     }
 
@@ -435,9 +414,9 @@ export async function handleIncomingMessage(messagePayload) {
         from,
         "Choose one of the options below:",
         [
-          { id: "product_buying_home", title: "1️⃣ Buying a Home" },
-          { id: "product_land_investment", title: "2️⃣ Investing in Land" },
-          { id: "product_catalogue", title: "3️⃣ Browse our catalogue" },
+          { id: "product_buying_home", title: "🏠 Buy Home" },
+          { id: "product_land_investment", title: "📍 Land Investment" },
+          { id: "product_catalogue", title: "📄 Catalogue" },
         ],
         "Product Selection",
         "Devtraco Plus"
@@ -628,9 +607,9 @@ export async function handleIncomingMessage(messagePayload) {
           from,
           "Choose one of the options below:",
           [
-            { id: "product_buying_home", title: "1️⃣ Buying a Home" },
-            { id: "product_land_investment", title: "2️⃣ Investing in Land" },
-            { id: "product_catalogue", title: "3️⃣ Browse our catalogue" },
+            { id: "product_buying_home", title: "🏠 Buy Home" },
+            { id: "product_land_investment", title: "📍 Land Investment" },
+            { id: "product_catalogue", title: "📄 Catalogue" },
           ],
           "Product Selection",
           "Devtraco Plus"
@@ -1542,6 +1521,22 @@ async function sendPropertyList(to, category = null) {
         description: `${p.location} — From $${p.priceFrom > 0 ? p.priceFrom.toLocaleString() : "Contact for price"}${p.status === "Sold Out" ? " (Sold Out)" : ""}`.slice(0, 72),
       })),
     });
+  }
+
+  // If no sections found, send a text message instead
+  if (sections.length === 0) {
+    await sendTextMessage(to, `📋 No properties available in this category yet.\n\nWould you like to:\n• Browse all properties\n• Speak to a team member for more options`);
+    await sendButtonMessage(
+      to,
+      "What would you like to do?",
+      [
+        { id: "view_properties", title: "📋 All Properties" },
+        { id: "speak_agent", title: "📞 Agent" },
+        { id: "back_to_product_intent", title: "< Back" },
+      ],
+      "Options"
+    );
+    return;
   }
 
   await sendListMessage(

@@ -305,6 +305,7 @@ function docToProperty(doc) {
     currency: doc.currency || "USD",
     amenities: doc.amenities || [],
     status: doc.status || "Now Selling",
+    category: doc.category || "residential",
     images: doc.images || [],
     videos: doc.videos || [],
     projectUrl: doc.projectUrl || "",
@@ -314,7 +315,7 @@ function docToProperty(doc) {
 }
 
 function defaultToProperty(d) {
-  return { ...d, id: d.propertyId, active: true };
+  return { ...d, id: d.propertyId, active: true, category: d.category || "residential" };
 }
 
 // ───────── Seed DB with defaults ─────────
