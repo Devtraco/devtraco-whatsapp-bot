@@ -1403,9 +1403,7 @@ async function confirmAndCreateViewing(to, pendingData) {
           const agentNumber = config.company.escalationWhatsApp.replace("+", "");
           const dateDisp = formatDateNice(confirmed.preferredDate);
           const timeDisp = formatTimeNice(confirmed.preferredTime);
-          await sendTextMessage(
-            agentNumber,
-            `📅 *New Viewing Confirmed*\n\n` +
+          const viewingNotif = `📅 *New Viewing Confirmed*\n\n` +
             `👤 *Client:* ${confirmed.name || "Not provided"}\n` +
             `📱 *Phone:* +${to}\n` +
             `📧 *Email:* ${confirmed.email || "Not provided"}\n` +
@@ -1413,11 +1411,13 @@ async function confirmAndCreateViewing(to, pendingData) {
             `📆 *Date:* ${dateDisp}\n` +
             `⏰ *Time:* ${timeDisp}\n` +
             `📋 *Reference:* ${confirmed.viewingId}\n\n` +
-            `Reply to client: wa.me/${to}`
-          );
-          console.log(`[Viewing] Agent notified of confirmed viewing ${confirmed.viewingId}`);
+            `Reply to client: wa.me/${to}`;
+
+          console.log(`[Viewing] Sending confirmation notification to agent ${agentNumber}...`);
+          const notifResult = await sendTextMessage(agentNumber, viewingNotif);
+          console.log(`[Viewing] ✅ Agent notified of viewing ${confirmed.viewingId}:`, notifResult?.messages?.[0]?.id || "ID not returned");
         } catch (agentErr) {
-          console.error(`[Viewing] Failed to notify agent of confirmed viewing:`, agentErr.message);
+          console.error(`[Viewing] ❌ Failed to notify agent of confirmed viewing:`, agentErr.response?.data || agentErr.message);
         }
 
         // NOTE: Auto-email disabled — agent handles confirmation manually
@@ -1592,6 +1592,7 @@ async function handleEscalation(to, reason) {
     const location = lead.preferredLocation || "Not provided";
 
     const agentNumber = config.company.escalationWhatsApp.replace("+", "");
+    console.log(`[Escalation] Agent number: ${agentNumber} (from config: ${config.company.escalationWhatsApp})`);
 
     const clientInfo =
       `🔔 *New Client Escalation*\n\n` +
@@ -1605,11 +1606,13 @@ async function handleEscalation(to, reason) {
       `Reply to the client directly on WhatsApp: wa.me/${phone}`;
 
     // Step 1: Plain text message — always delivered, no 24h window restriction
-    await sendTextMessage(agentNumber, clientInfo);
+    console.log(`[Escalation] Sending escalation message to agent ${agentNumber}...`);
+    const textResult = await sendTextMessage(agentNumber, clientInfo);
+    console.log(`[Escalation] ✅ Agent message sent successfully:`, textResult?.messages?.[0]?.id || "ID not returned");
 
     // Step 2: Try adding interactive response buttons (only works within 24h window)
     try {
-      await sendButtonMessage(
+      const buttonResult = await sendButtonMessage(
         agentNumber,
         `Tap to update client status:`,
         [
@@ -1618,12 +1621,14 @@ async function handleEscalation(to, reason) {
         ],
         "Quick Actions"
       );
+      console.log(`[Escalation] ✅ Agent buttons sent successfully:`, buttonResult?.messages?.[0]?.id || "ID not returned");
     } catch (btnErr) {
-      console.log(`[Escalation] Buttons unavailable (outside 24h window) — plain text delivered`);
+      console.log(`[Escalation] Buttons unavailable (outside 24h window) — plain text already delivered`);
     }
-    console.log(`[Escalation] Notified agent ${agentNumber} about client ${to}`);
+    console.log(`[Escalation] ✅ Successfully notified agent ${agentNumber} about client ${to}`);
   } catch (err) {
-    console.error(`[Escalation] Failed to notify agent:`, err.response?.data || err.message);
+    console.error(`[Escalation] ❌ Failed to notify agent:`, err.response?.data || err.message);
+    console.error(`[Escalation] Full error:`, err);
   }
 
   console.log(`[Escalation] ${to} — Reason: ${reason}`);
