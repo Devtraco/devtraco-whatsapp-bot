@@ -26,8 +26,8 @@ const BASE_URL = process.env.RENDER_EXTERNAL_URL || process.env.BASE_URL || `htt
 // --- Agent session keep-alive ---
 // WhatsApp only allows interactive/button messages within 24h of last agent message.
 // Every 22h we send the agent an activation request. When they reply, the 24h window reopens.
-// This continues for up to 7 days after their initial "hi".
-const AGENT_SESSION_DAYS = 7;
+// This continues for up to 30 days after their initial "hi".
+const AGENT_SESSION_DAYS = 30;
 const KEEP_ALIVE_INTERVAL_MS = 22 * 60 * 60 * 1000; // 22 hours
 
 let agentKeepAliveTimer = null;
