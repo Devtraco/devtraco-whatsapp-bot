@@ -656,15 +656,18 @@ router.post("/broadcast/send", async (req, res) => {
       return res.status(400).json({ error: "Provide a non-empty message" });
     }
 
-    console.log(`[API] Starting broadcast to ${phoneNumbers.length} agents`);
+    const { templateName, templateLanguage } = req.body;
+    const options = templateName ? { templateName, templateLanguage: templateLanguage || "en_US" } : {};
 
-    const results = await broadcastMessage(phoneNumbers, message);
+    console.log(`[API] Starting broadcast to ${phoneNumbers.length} agents${templateName ? ` (template: ${templateName})` : ""}`);
+
+    const results = await broadcastMessage(phoneNumbers, message, options);
     const durationSeconds = (results.endTime - results.startTime) / 1000;
 
     try {
       await saveBroadcastResult({
         title: `Broadcast - ${new Date().toLocaleString()}`,
-        message,
+        message: templateName ? `[Template: ${templateName}]` : message,
         phoneNumbers,
         ...results,
         durationSeconds,
@@ -746,14 +749,16 @@ router.post("/broadcast/upload-excel", broadcastUpload.single("file"), async (re
 
     console.log(`[API] Parsed ${phoneNumbers.length} phone numbers from uploaded file`);
 
-    // Send broadcast
-    const results = await broadcastMessage(phoneNumbers, message);
+    const { templateName, templateLanguage } = req.body;
+    const options = templateName ? { templateName, templateLanguage: templateLanguage || "en_US" } : {};
+
+    const results = await broadcastMessage(phoneNumbers, message, options);
 
     // Save results to database
     try {
       await saveBroadcastResult({
         title: `Broadcast - ${new Date().toLocaleString()}`,
-        message,
+        message: templateName ? `[Template: ${templateName}]` : message,
         phoneNumbers,
         ...results,
         filename: req.file.originalname,
