@@ -19,6 +19,7 @@ import {
 } from "../data/properties.js";
 import { getAllViewings, getPendingViewingCount, updateViewingStatus, formatViewingConfirmed, formatViewingCancelled, deleteViewing, deleteAllViewings, getAvailableSlots } from "../services/viewingScheduler.js";
 import { sendTextMessage } from "../services/whatsapp.js";
+import { broadcastMessage, parsePhoneNumbers, saveDraft, getAllDrafts, getDraft, updateDraft, deleteDraft, saveBroadcastResult, getBroadcastResults, getBroadcastResult, exportBroadcastResultAsCSV, exportBroadcastSummaryAsCSV } from "../services/broadcast.js";
 import { getCRMSyncStats, getCRMSyncLog, syncLeadToCRM } from "../services/crmSync.js";
 import { sendViewingConfirmationEmail, sendTestEmail } from "../services/email.js";
 import { invalidatePromptCache } from "../services/ai.js";
@@ -611,6 +612,279 @@ router.delete("/videos/:videoId", async (req, res) => {
     await updateProperty(video.propertyId, { videos: videoUrls });
 
     res.json({ success: true, message: "Video deleted" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========== BROADCAST MESSAGES ==========
+
+/**
+ * POST /api/broadcast/send — Send broadcast message to multiple agents
+ * Body: {
+ *   "phoneNumbers": ["+233123456789", "+233987654321"],
+ *   "message": "Join our Agent Mixer on April 30th!",
+ *   "options": { "batchSize": 20, "delayMs": 2000 }
+ * }
+ */
+router.post("/broadcast/send", async (req, res) => {
+  try {
+    const { phoneNumbers, message } = req.body;
+
+    if (!phoneNumbers || !Array.isArray(phoneNumbers) || phoneNumbers.length === 0) {
+      return res.status(400).json({ error: "Provide phoneNumbers array with at least one number" });
+    }
+
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
+      return res.status(400).json({ error: "Provide a non-empty message" });
+    }
+
+    console.log(`[API] Starting broadcast to ${phoneNumbers.length} agents`);
+
+    // Run broadcast in background and return immediately
+    const results = await broadcastMessage(phoneNumbers, message);
+
+    res.status(202).json({
+      status: "broadcast_completed",
+      ...results,
+      durationSeconds: (results.endTime - results.startTime) / 1000,
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/broadcast/upload-excel — Upload Excel file and send broadcast
+ * Expects multipart form data with "file" and "message" fields
+ * File must be .xlsx or .csv with phone numbers
+ */
+router.post("/broadcast/upload-excel", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const { message, phoneField } = req.body;
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
+      return res.status(400).json({ error: "Provide a non-empty message in body" });
+    }
+
+    // Parse file based on type
+    let phoneNumbers = [];
+
+    if (req.file.mimetype.includes("json")) {
+      // JSON file
+      const jsonData = JSON.parse(req.file.buffer.toString());
+      phoneNumbers = parsePhoneNumbers(jsonData, phoneField);
+    } else if (req.file.originalname.endsWith(".csv")) {
+      // CSV file — simple parser
+      const csvText = req.file.buffer.toString();
+      const lines = csvText.trim().split("\n");
+      const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
+      const phoneColumnIndex = headers.findIndex(
+        (h) => h.includes("phone") || h.includes("whatsapp") || h.includes("mobile")
+      );
+
+      if (phoneColumnIndex === -1) {
+        return res.status(400).json({ error: "Could not find phone column in CSV" });
+      }
+
+      for (let i = 1; i < lines.length; i++) {
+        const cells = lines[i].split(",").map((c) => c.trim());
+        if (cells[phoneColumnIndex]) {
+          let phone = cells[phoneColumnIndex];
+          if (!phone.startsWith("+")) {
+            phone = "+233" + phone.replace(/^0/, "");
+          }
+          phoneNumbers.push(phone);
+        }
+      }
+    } else if (req.file.mimetype.includes("spreadsheet") || req.file.originalname.endsWith(".xlsx")) {
+      // XLSX file — use simple approach
+      // For production, use 'xlsx' package
+      return res.status(400).json({
+        error: "XLSX parsing not set up yet. Please convert to CSV or use JSON format.",
+        hint: "Or install 'xlsx' package and implement parsing",
+      });
+    } else {
+      return res.status(400).json({ error: "Unsupported file format. Use CSV, JSON, or XLSX" });
+    }
+
+    if (phoneNumbers.length === 0) {
+      return res.status(400).json({ error: "No valid phone numbers found in file" });
+    }
+
+    console.log(`[API] Parsed ${phoneNumbers.length} phone numbers from uploaded file`);
+
+    // Send broadcast
+    const results = await broadcastMessage(phoneNumbers, message);
+
+    // Save results to database
+    try {
+      await saveBroadcastResult({
+        title: `Broadcast - ${new Date().toLocaleString()}`,
+        message,
+        phoneNumbers,
+        ...results,
+        filename: req.file.originalname,
+        durationSeconds: (results.endTime - results.startTime) / 1000,
+      });
+    } catch (err) {
+      console.error("[API] Failed to save broadcast result:", err.message);
+      // Don't fail the broadcast if result saving fails
+    }
+
+    res.status(202).json({
+      status: "broadcast_completed",
+      filename: req.file.originalname,
+      parsedNumbers: phoneNumbers.length,
+      ...results,
+      durationSeconds: (results.endTime - results.startTime) / 1000,
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/broadcast/status — Check broadcast status (for async tracking)
+ */
+router.get("/broadcast/status", (req, res) => {
+  res.json({
+    info: "Broadcasts execute synchronously. Check response from /api/broadcast/send or /api/broadcast/upload-excel",
+    endpoints: {
+      send: "POST /api/broadcast/send",
+      uploadExcel: "POST /api/broadcast/upload-excel",
+    },
+  });
+});
+
+// ========== DRAFT MANAGEMENT ==========
+
+/**
+ * POST /api/broadcast/drafts — Create a new draft
+ * Body: { "title": "Event Reminder", "message": "You're invited..." }
+ */
+router.post("/broadcast/drafts", async (req, res) => {
+  try {
+    const { title, message } = req.body;
+    if (!title || !message) {
+      return res.status(400).json({ error: "title and message are required" });
+    }
+    const draft = await saveDraft(title, message);
+    res.status(201).json(draft);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/broadcast/drafts — Get all saved drafts
+ */
+router.get("/broadcast/drafts", async (req, res) => {
+  try {
+    const drafts = await getAllDrafts();
+    res.json({ count: drafts.length, drafts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/broadcast/drafts/:draftId — Get a specific draft
+ */
+router.get("/broadcast/drafts/:draftId", async (req, res) => {
+  try {
+    const draft = await getDraft(req.params.draftId);
+    res.json(draft);
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+/**
+ * PUT /api/broadcast/drafts/:draftId — Update a draft
+ * Body: { "title": "...", "message": "..." }
+ */
+router.put("/broadcast/drafts/:draftId", async (req, res) => {
+  try {
+    const { title, message } = req.body;
+    const updates = {};
+    if (title) updates.title = title;
+    if (message) updates.message = message;
+    const draft = await updateDraft(req.params.draftId, updates);
+    res.json(draft);
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+/**
+ * DELETE /api/broadcast/drafts/:draftId — Delete a draft
+ */
+router.delete("/broadcast/drafts/:draftId", async (req, res) => {
+  try {
+    await deleteDraft(req.params.draftId);
+    res.json({ success: true, message: "Draft deleted" });
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+// ========== BROADCAST RESULTS & EXPORT ==========
+
+/**
+ * GET /api/broadcast/results — Get all broadcast results (sent broadcasts)
+ */
+router.get("/broadcast/results", async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit || "50", 10);
+    const skip = parseInt(req.query.skip || "0", 10);
+    const { results, total } = await getBroadcastResults({ limit, skip });
+    res.json({ count: results.length, total, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/broadcast/results/:broadcastId — Get a specific broadcast result
+ */
+router.get("/broadcast/results/:broadcastId", async (req, res) => {
+  try {
+    const result = await getBroadcastResult(req.params.broadcastId);
+    res.json(result);
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/broadcast/results/:broadcastId/export-csv — Export specific broadcast as CSV
+ */
+router.get("/broadcast/results/:broadcastId/export-csv", async (req, res) => {
+  try {
+    const broadcast = await getBroadcastResult(req.params.broadcastId);
+    const csv = exportBroadcastResultAsCSV(broadcast);
+    res.set("Content-Type", "text/csv");
+    res.set("Content-Disposition", `attachment; filename="broadcast-results-${broadcast.broadcastId}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/broadcast/export-summary-csv — Export all broadcast results as summary CSV
+ */
+router.get("/broadcast/export-summary-csv", async (req, res) => {
+  try {
+    const { results } = await getBroadcastResults({ limit: 1000 });
+    const csv = exportBroadcastSummaryAsCSV(results);
+    res.set("Content-Type", "text/csv");
+    res.set("Content-Disposition", `attachment; filename="broadcast-summary-${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csv);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
