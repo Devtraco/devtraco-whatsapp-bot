@@ -287,7 +287,10 @@ export async function saveBroadcastResult(broadcastData) {
     console.log(`[Broadcast] Result saved: ${result.broadcastId}`);
     return result;
   } catch (err) {
-    console.error(`[Broadcast] Failed to save result:`, err.message);
+    const detail = err.errors
+      ? Object.entries(err.errors).map(([k, v]) => `${k}: ${v.message}`).join(", ")
+      : err.message;
+    console.error(`[Broadcast] Failed to save result:`, detail);
     throw err;
   }
 }

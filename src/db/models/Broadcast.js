@@ -34,7 +34,6 @@ const broadcastSchema = new mongoose.Schema({
 
 // Index for queries
 broadcastSchema.index({ isDraft: 1, createdAt: -1 });
-broadcastSchema.index({ broadcastId: 1 });
 broadcastSchema.index({ sentAt: 1 });
 
 export default mongoose.model("Broadcast", broadcastSchema);

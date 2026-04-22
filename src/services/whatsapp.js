@@ -34,8 +34,12 @@ export async function sendTemplateMessage(to, templateName = "hello_world", lang
     );
     return response.data;
   } catch (err) {
+    const apiErr = err.response?.data?.error;
+    const detail = apiErr
+      ? `WhatsApp error ${apiErr.code || err.response.status}: ${apiErr.message || JSON.stringify(apiErr)}`
+      : `HTTP ${err.response?.status || "?"}: ${err.message}`;
     console.error("Template send failed:", err.response?.data || err.message);
-    throw err;
+    throw new Error(detail);
   }
 }
 

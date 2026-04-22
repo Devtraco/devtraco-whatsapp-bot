@@ -2474,7 +2474,7 @@
   // ========== BROADCAST RESULTS ==========
   async function loadBroadcastResults() {
     try {
-      const data = await authFetch(`${API}/broadcast/results?limit=100`).then(r => r.json());
+      const data = await authFetch(`${API}/broadcast/results?limit=100&_t=${Date.now()}`).then(r => r.json());
       broadcastResults = data.results || [];
       renderBroadcastHistory();
     } catch (err) {
