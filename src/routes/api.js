@@ -43,6 +43,23 @@ const upload = multer({
   },
 });
 
+// Multer config for broadcast files (CSV, JSON, XLSX — 10 MB max)
+const broadcastUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok =
+      file.mimetype.includes("csv") ||
+      file.mimetype.includes("json") ||
+      file.mimetype.includes("spreadsheet") ||
+      file.originalname.endsWith(".csv") ||
+      file.originalname.endsWith(".json") ||
+      file.originalname.endsWith(".xlsx");
+    if (ok) cb(null, true);
+    else cb(new Error("Only CSV, JSON, or XLSX files are allowed"), false);
+  },
+});
+
 // Multer config for videos (50 MB max)
 const videoUpload = multer({
   storage: multer.memoryStorage(),
@@ -641,13 +658,25 @@ router.post("/broadcast/send", async (req, res) => {
 
     console.log(`[API] Starting broadcast to ${phoneNumbers.length} agents`);
 
-    // Run broadcast in background and return immediately
     const results = await broadcastMessage(phoneNumbers, message);
+    const durationSeconds = (results.endTime - results.startTime) / 1000;
+
+    try {
+      await saveBroadcastResult({
+        title: `Broadcast - ${new Date().toLocaleString()}`,
+        message,
+        phoneNumbers,
+        ...results,
+        durationSeconds,
+      });
+    } catch (saveErr) {
+      console.error("[API] Failed to save broadcast result:", saveErr.message);
+    }
 
     res.status(202).json({
       status: "broadcast_completed",
       ...results,
-      durationSeconds: (results.endTime - results.startTime) / 1000,
+      durationSeconds,
     });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -659,7 +688,7 @@ router.post("/broadcast/send", async (req, res) => {
  * Expects multipart form data with "file" and "message" fields
  * File must be .xlsx or .csv with phone numbers
  */
-router.post("/broadcast/upload-excel", upload.single("file"), async (req, res) => {
+router.post("/broadcast/upload-excel", broadcastUpload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
