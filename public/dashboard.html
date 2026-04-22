@@ -1043,17 +1043,22 @@
           <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-primary);">
             <input type="checkbox" id="useTemplate" onchange="toggleTemplateFields()" style="width: 15px; height: 15px; cursor: pointer; accent-color: var(--brand, #0066cc);">
             Use Template Message
-            <span style="font-size: 12px; font-weight: 400; color: var(--text-muted);">— bypasses 24-hour window (requires pre-approved Meta template)</span>
+            <span style="font-size: 12px; font-weight: 400; color: var(--text-muted);">— bypasses 24-hour window</span>
           </label>
           <div id="templateFields" style="display: none; margin-top: 12px; grid-template-columns: 2fr 1fr; gap: 12px;">
-            <div>
-              <label style="display: block; font-size: 12px; font-weight: 500; margin-bottom: 5px; color: var(--text-secondary);">Template Name</label>
-              <input type="text" id="templateName" value="hello_world" placeholder="hello_world" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; box-sizing: border-box;">
-              <p style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">Exact name from Meta Business Manager</p>
+            <!-- Important note -->
+            <div style="grid-column: 1 / -1; padding: 8px 12px; background: #eff6ff; border: 1px solid #93c5fd; border-radius: 6px; font-size: 12px; color: #1e40af; line-height: 1.5;">
+              <strong>Template name ≠ message text.</strong> Enter the exact system name of a pre-approved template from your Meta Business Manager (e.g. <code style="background:#dbeafe;padding:1px 4px;border-radius:3px;">hello_world</code>). The template's own content is what gets sent — the Message field above is ignored.
             </div>
             <div>
-              <label style="display: block; font-size: 12px; font-weight: 500; margin-bottom: 5px; color: var(--text-secondary);">Language Code</label>
-              <input type="text" id="templateLanguage" value="en_US" placeholder="en_US" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; box-sizing: border-box;">
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; color: var(--text-primary);">Template System Name</label>
+              <input type="text" id="templateName" value="hello_world" placeholder="hello_world" style="width: 100%; padding: 8px; border: 1px solid #93c5fd; border-radius: var(--radius); font-size: 13px; box-sizing: border-box; font-family: monospace;">
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">Lowercase, underscores only — as shown in Meta Business Manager</p>
+            </div>
+            <div>
+              <label style="display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; color: var(--text-primary);">Language Code</label>
+              <input type="text" id="templateLanguage" value="en_US" placeholder="en_US" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; box-sizing: border-box; font-family: monospace;">
+              <p style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">e.g. en_US, en, fr</p>
             </div>
           </div>
         </div>
@@ -2159,8 +2164,12 @@
     const templateName     = document.getElementById('templateName')?.value.trim() || 'hello_world';
     const templateLanguage = document.getElementById('templateLanguage')?.value.trim() || 'en_US';
 
-    if (!message && !useTemplate) {
+    if (!useTemplate && !message) {
       showAlert('Please enter a message', 'warning');
+      return;
+    }
+    if (useTemplate && !templateName) {
+      showAlert('Please enter the template system name (e.g. hello_world)', 'warning');
       return;
     }
 
@@ -2217,7 +2226,7 @@
       }
 
       const result = await response.json();
-      showBroadcastResults(result, message || `[Template: ${templateName}]`);
+      showBroadcastResults(result, message, useTemplate ? templateName : null);
       await loadBroadcastResults();
       resetBroadcastForm();
     } catch (err) {
@@ -2228,47 +2237,55 @@
     }
   }
 
-  function showBroadcastResults(result, message) {
-    const resultsCard = document.getElementById('broadcastResultsCard');
+  function showBroadcastResults(result, message, templateName = null) {
+    const resultsCard    = document.getElementById('broadcastResultsCard');
     const resultsContent = document.getElementById('broadcastResultsContent');
+    const rate = result.totalRequested > 0 ? Math.round((result.totalSent / result.totalRequested) * 100) : 0;
+
+    const msgBlock = templateName
+      ? `<div style="padding: 12px; background: #eff6ff; border: 1px solid #93c5fd; border-radius: var(--radius); margin-bottom: 16px;">
+           <p style="font-size: 11px; color: #1d4ed8; font-weight: 600; margin-bottom: 3px; text-transform: uppercase; letter-spacing: .5px;">Template Used</p>
+           <code style="font-size: 14px; color: #1e40af; font-weight: 600;">${templateName}</code>
+           <p style="font-size: 11px; color: #3b82f6; margin-top: 4px;">The template's own approved content was delivered — not the message field text.</p>
+         </div>`
+      : `<div style="padding: 12px; background: var(--bg); border-radius: var(--radius); margin-bottom: 16px;">
+           <p style="font-size: 11px; color: var(--text-secondary); font-weight: 600; margin-bottom: 3px; text-transform: uppercase; letter-spacing: .5px;">Message Sent</p>
+           <p style="font-size: 14px; color: var(--text-primary); font-weight: 500;">"${message}"</p>
+         </div>`;
 
     let html = `
-      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 20px;">
-        <div style="padding: 12px; background: var(--success-light); border-radius: var(--radius); border-left: 4px solid var(--success);">
-          <div style="font-size: 14px; color: var(--text-secondary);">Sent</div>
-          <div style="font-size: 24px; font-weight: 700; color: var(--success);">${result.totalSent}</div>
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;">
+        <div style="padding: 12px; background: var(--success-light); border-radius: var(--radius); border-left: 4px solid var(--success); text-align: center;">
+          <div style="font-size: 12px; color: var(--text-secondary);">Sent</div>
+          <div style="font-size: 26px; font-weight: 700; color: var(--success);">${result.totalSent}</div>
         </div>
-        <div style="padding: 12px; background: var(--danger-light); border-radius: var(--radius); border-left: 4px solid var(--danger);">
-          <div style="font-size: 14px; color: var(--text-secondary);">Failed</div>
-          <div style="font-size: 24px; font-weight: 700; color: var(--danger);">${result.failed}</div>
+        <div style="padding: 12px; background: var(--danger-light); border-radius: var(--radius); border-left: 4px solid var(--danger); text-align: center;">
+          <div style="font-size: 12px; color: var(--text-secondary);">Failed</div>
+          <div style="font-size: 26px; font-weight: 700; color: var(--danger);">${result.failed}</div>
         </div>
-        <div style="padding: 12px; background: var(--info-light); border-radius: var(--radius); border-left: 4px solid var(--info);">
-          <div style="font-size: 14px; color: var(--text-secondary);">Total Requested</div>
-          <div style="font-size: 24px; font-weight: 700; color: var(--info);">${result.totalRequested}</div>
+        <div style="padding: 12px; background: var(--info-light); border-radius: var(--radius); border-left: 4px solid var(--info); text-align: center;">
+          <div style="font-size: 12px; color: var(--text-secondary);">Total</div>
+          <div style="font-size: 26px; font-weight: 700; color: var(--info);">${result.totalRequested}</div>
         </div>
-        <div style="padding: 12px; background: var(--brand-light); border-radius: var(--radius); border-left: 4px solid var(--brand);">
-          <div style="font-size: 14px; color: var(--text-secondary);">Duration</div>
-          <div style="font-size: 24px; font-weight: 700; color: var(--brand);">${(result.durationSeconds || 0).toFixed(1)}s</div>
+        <div style="padding: 12px; background: var(--brand-light); border-radius: var(--radius); border-left: 4px solid var(--brand); text-align: center;">
+          <div style="font-size: 12px; color: var(--text-secondary);">Success Rate</div>
+          <div style="font-size: 26px; font-weight: 700; color: var(--brand);">${rate}%</div>
         </div>
       </div>
-
-      <div style="padding: 12px; background: var(--bg); border-radius: var(--radius); margin-bottom: 16px;">
-        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Message Sent:</p>
-        <p style="font-size: 14px; color: var(--text-primary); font-weight: 500;">"${message}"</p>
-      </div>
+      ${msgBlock}
     `;
 
     if (result.failedNumbers && result.failedNumbers.length > 0) {
       html += `
-        <div style="padding: 12px; background: var(--danger-light); border-radius: var(--radius); border-left: 4px solid var(--danger); max-height: 200px; overflow-y: auto;">
-          <p style="font-weight: 500; margin-bottom: 8px; color: var(--danger);">Failed Numbers:</p>
-          <ul style="margin: 0; padding-left: 20px;">
+        <div style="padding: 12px; background: var(--danger-light); border-radius: var(--radius); border-left: 4px solid var(--danger); max-height: 220px; overflow-y: auto;">
+          <p style="font-weight: 600; margin-bottom: 8px; color: var(--danger); font-size: 13px;">Failed Numbers (${result.failedNumbers.length}):</p>
+          <ul style="margin: 0; padding-left: 18px;">
       `;
-      result.failedNumbers.slice(0, 10).forEach(item => {
-        html += `<li style="font-size: 12px; color: var(--text-secondary);">${item.number}: ${item.reason}</li>`;
+      result.failedNumbers.slice(0, 15).forEach(item => {
+        html += `<li style="font-size: 12px; color: var(--text-secondary); margin-bottom: 3px;"><strong>${item.number}</strong>: ${item.reason}</li>`;
       });
-      if (result.failedNumbers.length > 10) {
-        html += `<li style="font-size: 12px; color: var(--text-muted); font-style: italic;">... and ${result.failedNumbers.length - 10} more</li>`;
+      if (result.failedNumbers.length > 15) {
+        html += `<li style="font-size: 12px; color: var(--text-muted); font-style: italic;">…and ${result.failedNumbers.length - 15} more</li>`;
       }
       html += `</ul></div>`;
     }

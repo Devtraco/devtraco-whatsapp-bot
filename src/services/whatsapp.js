@@ -164,11 +164,12 @@ async function sendMessage(to, messagePayload, retries = 2) {
         await sleep(1000 * (attempt + 1)); // exponential back-off
         continue;
       }
-      console.error(
-        `WhatsApp send failed (attempt ${attempt + 1}):`,
-        err.response?.data || err.message
-      );
-      throw err;
+      const apiErr = err.response?.data?.error;
+      const detail = apiErr
+        ? `WhatsApp error ${apiErr.code || err.response.status}: ${apiErr.message || JSON.stringify(apiErr)}`
+        : `HTTP ${err.response?.status || "?"}: ${err.message}`;
+      console.error(`WhatsApp send failed (attempt ${attempt + 1}):`, err.response?.data || err.message);
+      throw new Error(detail);
     }
   }
 }
