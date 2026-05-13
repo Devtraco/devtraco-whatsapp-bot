@@ -204,9 +204,6 @@ export async function generateResponse(conversationHistory, leadData = null, ima
     const systemPrompt = await buildSystemPrompt(category);
     const t1 = Date.now();
 
-    // Only send last N messages to keep input tokens low
-    const recentHistory = conversationHistory.slice(-config.session.maxHistory);
-
     // Build messages array
     const messages = [
       { role: "system", content: systemPrompt },
@@ -227,8 +224,8 @@ export async function generateResponse(conversationHistory, leadData = null, ima
     // Add the actual conversation history.
     // If the user sent an image, upgrade the last user message to a vision content array.
     messages.push(
-      ...recentHistory.map((msg, i) => {
-        if (imageData && i === recentHistory.length - 1 && msg.role === "user") {
+      ...conversationHistory.map((msg, i) => {
+        if (imageData && i === conversationHistory.length - 1 && msg.role === "user") {
           return {
             role: "user",
             content: [

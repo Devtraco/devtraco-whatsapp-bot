@@ -126,11 +126,6 @@ export async function addMessage(userId, role, content, mediaUrl = null) {
   const msg = { role, content, timestamp: Date.now() };
   if (mediaUrl) msg.mediaUrl = mediaUrl;
   session.history.push(msg);
-
-  if (session.history.length > config.session.maxHistory) {
-    session.history = session.history.slice(-config.session.maxHistory);
-  }
-
   session.lastActivity = Date.now();
   persistSession(session);
   return session;

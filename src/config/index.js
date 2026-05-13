@@ -26,8 +26,7 @@ const config = {
 
   // Session
   session: {
-    ttlMinutes: 30, // conversation context window
-    maxHistory: 10, // max messages kept in context (fewer = faster AI)
+    ttlMinutes: 30,
   },
 
   // MongoDB
