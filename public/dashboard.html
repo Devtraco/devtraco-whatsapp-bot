@@ -1636,6 +1636,7 @@
               <button class="btn btn-success btn-sm" onclick="updateViewing('${v.id}', 'CONFIRMED')">Confirm</button>
               <button class="btn btn-danger btn-sm" style="margin-left:4px;" onclick="updateViewing('${v.id}', 'CANCELLED')">Cancel</button>
             ` : ''}
+            <button class="btn btn-sm" style="margin-left:4px;" onclick="notifyAgent('${v.id}')" title="Send to agent WhatsApp">📲 Notify Agent</button>
             <button class="btn btn-ghost btn-sm" onclick="deleteViewingSingle('${v.id}')" title="Delete" style="color:var(--danger);margin-left:4px;">✕</button>
           </td>
         </tr>
@@ -1652,6 +1653,15 @@
       });
       refreshViewings();
     } catch (err) { alert('Failed to update viewing: ' + err.message); }
+  }
+
+  async function notifyAgent(id) {
+    try {
+      const res = await authFetch(`${API}/viewings/${id}/notify-agent`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unknown error');
+      alert('Agent notified via WhatsApp.');
+    } catch (err) { alert('Failed to notify agent: ' + err.message); }
   }
 
   async function deleteViewingSingle(id) {

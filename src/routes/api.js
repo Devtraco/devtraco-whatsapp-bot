@@ -1,6 +1,7 @@
 import express from "express";
 import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
+import config from "../config/index.js";
 import {
   getAllSessions,
   getActiveSessionCount,
@@ -17,7 +18,7 @@ import {
   updateProperty,
   deleteProperty,
 } from "../data/properties.js";
-import { getAllViewings, getPendingViewingCount, updateViewingStatus, formatViewingConfirmed, formatViewingCancelled, deleteViewing, deleteAllViewings, getAvailableSlots } from "../services/viewingScheduler.js";
+import { getAllViewings, getPendingViewingCount, updateViewingStatus, formatViewingConfirmed, formatViewingCancelled, deleteViewing, deleteAllViewings, getAvailableSlots, formatDateNice, formatTimeNice, getViewingById } from "../services/viewingScheduler.js";
 import { sendTextMessage } from "../services/whatsapp.js";
 import { broadcastMessage, parsePhoneNumbers, saveDraft, getAllDrafts, getDraft, updateDraft, deleteDraft, saveBroadcastResult, getBroadcastResults, getBroadcastResult, exportBroadcastResultAsCSV, exportBroadcastSummaryAsCSV } from "../services/broadcast.js";
 import { getCRMSyncStats, getCRMSyncLog, syncLeadToCRM } from "../services/crmSync.js";
@@ -325,7 +326,7 @@ router.patch("/viewings/:id", async (req, res) => {
     return res.status(404).json({ error: "Viewing not found" });
   }
 
-  // Send WhatsApp notification to the customer
+  // Notify client
   try {
     const phone = viewing.phone || viewing.userId;
     if (phone) {
@@ -338,10 +339,60 @@ router.patch("/viewings/:id", async (req, res) => {
       }
     }
   } catch (err) {
-    console.error(`[Viewing] Failed to notify user:`, err.message);
+    console.error(`[Viewing] Failed to notify client:`, err.message);
+  }
+
+  // Notify agent when confirmed from dashboard
+  if (status === "CONFIRMED") {
+    try {
+      const agentNumber = config.company.escalationWhatsApp.replace("+", "");
+      const clientPhone = viewing.phone || viewing.userId || "N/A";
+      const agentMsg =
+        `📅 *New Viewing Confirmed (Dashboard)*\n\n` +
+        `👤 *Client:* ${viewing.name || "Not provided"}\n` +
+        `📱 *Phone:* ${clientPhone}\n` +
+        `📧 *Email:* ${viewing.email || "Not provided"}\n` +
+        `🏠 *Property:* ${viewing.propertyName || "Not specified"}\n` +
+        `📆 *Date:* ${formatDateNice(viewing.preferredDate)}\n` +
+        `⏰ *Time:* ${formatTimeNice(viewing.preferredTime)}\n` +
+        `📋 *Reference:* ${viewing.viewingId}\n\n` +
+        `Reply to client: wa.me/${clientPhone.replace(/\D/g, "")}`;
+      await sendTextMessage(agentNumber, agentMsg);
+    } catch (agentErr) {
+      console.error(`[Viewing] Failed to notify agent:`, agentErr.message);
+    }
   }
 
   res.json(viewing);
+});
+
+/**
+ * POST /api/viewings/:id/notify-agent — Manually send viewing details to agent WhatsApp
+ */
+router.post("/viewings/:id/notify-agent", async (req, res) => {
+  const viewing = await getViewingById(req.params.id);
+  if (!viewing) return res.status(404).json({ error: "Viewing not found" });
+
+  try {
+    const agentNumber = config.company.escalationWhatsApp.replace("+", "");
+    const clientPhone = viewing.phone || viewing.userId || "N/A";
+    const agentMsg =
+      `📅 *Viewing Details (Manual Send)*\n\n` +
+      `👤 *Client:* ${viewing.name || "Not provided"}\n` +
+      `📱 *Phone:* ${clientPhone}\n` +
+      `📧 *Email:* ${viewing.email || "Not provided"}\n` +
+      `🏠 *Property:* ${viewing.propertyName || "Not specified"}\n` +
+      `📆 *Date:* ${formatDateNice(viewing.preferredDate)}\n` +
+      `⏰ *Time:* ${formatTimeNice(viewing.preferredTime)}\n` +
+      `📋 *Reference:* ${viewing.viewingId}\n` +
+      `📌 *Status:* ${viewing.status}\n\n` +
+      `Reply to client: wa.me/${clientPhone.replace(/\D/g, "")}`;
+    await sendTextMessage(agentNumber, agentMsg);
+    res.json({ success: true, message: "Agent notified via WhatsApp" });
+  } catch (err) {
+    console.error(`[Viewing] Failed to notify agent:`, err.message);
+    res.status(502).json({ error: "Failed to send WhatsApp to agent: " + err.message });
+  }
 });
 
 /**
