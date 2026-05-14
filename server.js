@@ -6,6 +6,7 @@ import config from "./src/config/index.js";
 import { connectDB } from "./src/db/connection.js";
 import { seedProperties } from "./src/data/properties.js";
 import { startStatusScraper } from "./src/services/statusScraper.js";
+import { scheduleDailyReport } from "./src/services/dailyReport.js";
 import webhookRoutes from "./src/routes/webhook.js";
 import apiRoutes from "./src/routes/api.js";
 import { authMiddleware, loginHandler } from "./src/middleware/auth.js";
@@ -91,6 +92,8 @@ async function start() {
     await seedProperties();
     startStatusScraper();
   }
+
+  scheduleDailyReport();
 
   app.listen(config.port, () => {
     console.log(`\n🤖 Devtraco WhatsApp AI Chatbot`);

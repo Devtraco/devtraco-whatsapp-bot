@@ -136,6 +136,15 @@ export async function handleIncomingMessage(messagePayload) {
     return;
   }
 
+  // --- Audio/voice message — politely ask for text ---
+  if (type === "audio") {
+    await sendTextMessage(
+      from,
+      `🎙️ I received your voice message!\n\nI would be very glad if you could send me a *text message* instead — this will help me understand your needs better and respond to you more accurately. 😊\n\nWhat can I help you with today?`
+    );
+    return;
+  }
+
   const session = await getSession(from);
   const userText = extractUserText(type, text, interactive, media);
 
@@ -161,7 +170,7 @@ export async function handleIncomingMessage(messagePayload) {
     return;
   }
 
-  const speakToAgentCmd = /^(?:\/agent|speak\s+to\s+(?:an?\s+)?agent|human\s+agent|talk\s+to\s+(?:an?\s+)?agent|connect\s+(?:me\s+)?to\s+(?:an?\s+)?agent|can\s+i\s+speak\s+to\s+(?:an?\s+)?agent|i\s+(?:want|need)\s+(?:to\s+speak\s+to\s+)?(?:an?\s+)?(?:agent|human|person)|get\s+(?:a\s+)?human|real\s+(?:agent|person))$/i;
+  const speakToAgentCmd = /^(?:\/agent|speak(?:\s+to)?\s+(?:an?\s+)?(?:agent|human|person|someone|staff|consultant|team\s+member)|human\s+(?:agent|please|help|support)|talk\s+to\s+(?:an?\s+)?(?:agent|human|person|someone|consultant|team\s+member)|connect\s+(?:me\s+)?to\s+(?:an?\s+)?(?:agent|human|person|someone|consultant)|can\s+i\s+(?:speak|talk|chat|get)\s+(?:to|with)\s+(?:an?\s+)?(?:agent|human|person|someone|consultant|representative)|i\s+(?:want|need|would\s+like)\s+(?:to\s+(?:speak|talk|chat|connect)\s+(?:to|with)\s+)?(?:an?\s+)?(?:agent|human|person|real\s+person|consultant|staff|someone)|get\s+(?:a\s+)?(?:human|real\s+person|agent|consultant)|please\s+(?:connect|transfer)\s+me|(?:transfer|escalate)\s+(?:me\s+)?to\s+(?:an?\s+)?agent|real\s+(?:agent|person|human)|i\s+need\s+help\s+from\s+(?:a\s+)?(?:human|person|agent|real))$/i;
   if (speakToAgentCmd.test(command)) {
     await handleEscalation(from, "Customer requested human agent");
     return;
@@ -440,7 +449,7 @@ export async function handleIncomingMessage(messagePayload) {
       await updateLeadData(from, {}); // persist metadata
     }
 
-    const welcomeMsg = `Hello 👋 Welcome to Devtraco Plus\n\nLet's get you the right real estate investment option best for your needs.\n\nBefore we proceed, can you share:\n• Full Name\n• Country you are in?\n• Email Address\n\nLet's start with your full name:`;
+    const welcomeMsg = `Hello 👋 Welcome to Devtraco Plus\n\nLet's get you the right real estate investment option best for your needs.\n\nBefore we proceed, can you share with me your full name:`;
     await addMessage(from, "assistant", welcomeMsg);
     await sendTextMessage(from, welcomeMsg);
     return;
@@ -467,7 +476,29 @@ export async function handleIncomingMessage(messagePayload) {
     // Step 1: If message clearly contains a name intro phrase, don't treat as question
     const hasNameIntro = /(?:my name is|i(?:'m|\s+am)|\bam\b|it's|call me)\s+\w+/i.test(userText);
 
-    // Step 2: Detect questions and greetings with no name — answer via AI and re-ask
+    // Step 2a: Detect explicit name refusal — break the loop, proceed as Sir/Madam
+    const isNameRefusal = /^(?:no(?:\s+thanks?)?|nope|skip|don.?t\s+(?:want|have)|prefer\s+not|rather\s+not|anonymous|private|no\s+name|not\s+(?:giving|sharing)|i\s+(?:don.?t|won.?t|prefer\s+not|refuse|rather\s+not)\b)[\s.!,]*$/i.test(userText.trim());
+
+    if (isNameRefusal) {
+      session.metadata = session.metadata || {};
+      session.metadata.nameRefusalCount = (session.metadata.nameRefusalCount || 0) + 1;
+      await addMessage(from, "user", userText);
+
+      if (session.metadata.nameRefusalCount >= 2) {
+        // Second refusal — proceed without name, use Sir/Madam
+        session.metadata.useSirMadam = true;
+        session.metadata.inWelcomeFlow = true;
+        await updateLeadData(from, {});
+        await updateState(from, "AWAITING_COUNTRY");
+        await sendTextMessage(from, `No problem at all! 😊\n\nMay I also know which country you are in?`);
+      } else {
+        await updateLeadData(from, {}); // persist nameRefusalCount
+        await sendTextMessage(from, `That's completely fine! 😊\n\nCould I just have your first name to personalise your experience? Or type *skip* to continue — I'll address you as Sir/Madam.`);
+      }
+      return;
+    }
+
+    // Step 2b: Detect questions and greetings with no name — answer via AI and re-ask
     const looksLikeQuestion = !hasNameIntro && (
       /\?/.test(userText) ||
       /^(?:what|where|when|why|who|how|do|does|can|could|is|are|will|would|please|hello+|hi+|hey+|greetings?|good\s*(?:morning|afternoon|evening|night)|sannu|ok(?:ay)?|yes|no)\b/i.test(userText.trim())
@@ -534,21 +565,21 @@ export async function handleIncomingMessage(messagePayload) {
       session.metadata.inWelcomeFlow = true;
       await updateLeadData(from, {});
       await updateState(from, "AWAITING_COUNTRY");
-      await sendTextMessage(from, `Thank you, *${name}*! 😊\n\nWhich country are you in?`);
+      await sendTextMessage(from, `Nice to meet you, *${name}*! 😊\n\nMay I also know which country you are in?`);
     } else if (session.metadata?.pendingIntent) {
       // Name only, but first message already had an inquiry stored
       session.metadata.inWelcomeFlow = true;
       await updateLeadData(from, {});
       await updateState(from, "AWAITING_COUNTRY");
-      await sendTextMessage(from, `Nice to meet you, *${name}*! 😊\n\nWhich country are you in?`);
+      await sendTextMessage(from, `Nice to meet you, *${name}*! 😊\n\nMay I also know which country you are in?`);
     } else {
       // Name only — move to country collection
       session.metadata = session.metadata || {};
       session.metadata.inWelcomeFlow = true;
       await updateLeadData(from, {});
       await updateState(from, "AWAITING_COUNTRY");
-      await addMessage(from, "assistant", `Nice to meet you, ${name}! Which country are you in?`);
-      await sendTextMessage(from, `Nice to meet you, *${name}*! 😊\n\nWhich country are you in?`);
+      await addMessage(from, "assistant", `Nice to meet you, ${name}! May I also know which country you are in?`);
+      await sendTextMessage(from, `Nice to meet you, *${name}*! 😊\n\nMay I also know which country you are in?`);
     }
     return;
   }
@@ -570,8 +601,24 @@ export async function handleIncomingMessage(messagePayload) {
 
     await updateLeadData(from, { country });
     await addMessage(from, "user", userText);
-    await updateState(from, "AWAITING_EMAIL");
-    await sendTextMessage(from, `Thank you! Now, could you please share your email address?\n\nYou can also type *skip* if you prefer to provide it later.`);
+
+    // Skip email in welcome flow — ask it only when booking a viewing
+    await updateState(from, "AWAITING_PRODUCT_INTENT");
+    delete session.metadata.inWelcomeFlow;
+    await updateLeadData(from, {});
+
+    await sendTextMessage(from, `What are you interested in?`);
+    await sendButtonMessage(
+      from,
+      "Choose one of the options below:",
+      [
+        { id: "product_buying_home", title: "🏠 Buy Home" },
+        { id: "product_land_investment", title: "📍 Land Investment" },
+        { id: "product_catalogue", title: "📄 Catalogue" },
+      ],
+      "Product Selection",
+      "Devtraco Plus"
+    );
     return;
   }
 
@@ -587,21 +634,32 @@ export async function handleIncomingMessage(messagePayload) {
       }
       await addMessage(from, "user", userText);
 
-      // Check if we're in the welcome flow or post-viewing
-      const inWelcomeFlow = session.metadata?.inWelcomeFlow;
-
-      if (inWelcomeFlow) {
-        // Welcome flow: transition to product intent selection
-        await updateState(from, "AWAITING_PRODUCT_INTENT");
-        delete session.metadata.inWelcomeFlow; // Clear flag
+      // Case 1: Pending viewing schedule — email was asked before booking, now continue
+      const pendingSchedule = session.metadata?.pendingViewingSchedule;
+      if (pendingSchedule) {
+        delete session.metadata.pendingViewingSchedule;
         await updateLeadData(from, {});
+        await updateState(from, "ACTIVE");
+        if (emailMatch) {
+          await sendTextMessage(from, `📧 Thank you! I've noted your email: *${email}*\n\nNow let me complete your viewing booking. ✅`);
+        } else {
+          await sendTextMessage(from, `No problem! Let me complete your viewing booking now. ✅`);
+        }
+        await confirmAndCreateViewing(from, pendingSchedule);
+        return;
+      }
 
+      // Case 2: Welcome flow (legacy — kept for safety, shouldn't normally fire in new flow)
+      const inWelcomeFlow = session.metadata?.inWelcomeFlow;
+      if (inWelcomeFlow) {
+        await updateState(from, "AWAITING_PRODUCT_INTENT");
+        delete session.metadata.inWelcomeFlow;
+        await updateLeadData(from, {});
         if (emailMatch) {
           await sendTextMessage(from, `📧 Thank you! We've noted your email: *${email}*`);
         } else {
           await sendTextMessage(from, `No problem! You can provide your email later if needed.`);
         }
-
         await sendTextMessage(from, `\nWhat are you interested in?`);
         await sendButtonMessage(
           from,
@@ -614,13 +672,14 @@ export async function handleIncomingMessage(messagePayload) {
           "Product Selection",
           "Devtraco Plus"
         );
-      } else {
-        // Post-viewing: acknowledge email and transition to ACTIVE
-        await updateState(from, "ACTIVE");
-        await sendTextMessage(from, `📧 Thank you! We've noted your email: *${email}*. A confirmation email is on its way.`);
-        await addMessage(from, "assistant", `Thank you, email noted: ${email}`);
-        await sendTextMessage(from, `Is there anything else I can help you with? 😊`);
+        return;
       }
+
+      // Case 3: Post-viewing email ask
+      await updateState(from, "ACTIVE");
+      await sendTextMessage(from, `📧 Thank you! We've noted your email: *${email}*. A confirmation email is on its way.`);
+      await addMessage(from, "assistant", `Thank you, email noted: ${email}`);
+      await sendTextMessage(from, `Is there anything else I can help you with? 😊`);
       return;
     }
 
@@ -908,7 +967,12 @@ async function generateAIResponseFull(from, session, imageData = null) {
     category = "all_catalogue";
   }
 
-  const result = await generateResponse(session.history, session.leadData, imageData, category);
+  // If user declined to share name, address them as Sir/Madam in AI context
+  const effectiveLeadData = (session.metadata?.useSirMadam && !session.leadData?.name)
+    ? { ...session.leadData, name: "Sir/Madam" }
+    : session.leadData;
+
+  const result = await generateResponse(session.history, effectiveLeadData, imageData, category);
   await addMessage(from, "assistant", result.text);
   return result;
 }
@@ -1318,6 +1382,20 @@ async function handleViewingSchedule(to, scheduleData) {
       await addMessage(to, "assistant", `⚠️ ${reason}`);
       return;
     }
+  }
+
+  // Ask for email before creating viewing if not yet collected
+  const freshSession = await getSession(to);
+  if (!freshSession.leadData?.email || freshSession.leadData.email === "Not provided") {
+    freshSession.metadata = freshSession.metadata || {};
+    freshSession.metadata.pendingViewingSchedule = { ...scheduleData, resolvedDate, resolvedTime };
+    await updateLeadData(to, {});
+    await updateState(to, "AWAITING_EMAIL");
+    await sendTextMessage(
+      to,
+      `To book your viewing, kindly share your email address with me. 📧\n\nThis will help me make the process faster for you.\n\nYou can also type *skip* if you prefer.`
+    );
+    return;
   }
 
   // Directly create the viewing — no intermediate confirmation step
