@@ -141,7 +141,26 @@ export async function sendDailyReportToAgent() {
 }
 
 export function scheduleDailyReport() {
-  const INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
-  console.log(`[DailyReport] Scheduled every 5 minutes`);
-  setInterval(sendDailyReportToAgent, INTERVAL_MS);
+  function scheduleNextRun() {
+    // Ghana is UTC+0 — 8pm Ghana = 20:00 UTC
+    const now = new Date();
+    const target = new Date();
+    target.setUTCHours(20, 0, 0, 0);
+
+    if (now.getTime() >= target.getTime()) {
+      // Already past 8pm today — schedule for tomorrow
+      target.setUTCDate(target.getUTCDate() + 1);
+    }
+
+    const delay = target.getTime() - now.getTime();
+    const hoursUntil = (delay / 1000 / 60 / 60).toFixed(1);
+    console.log(`[DailyReport] Scheduled for 8pm Ghana — ${hoursUntil}h from now (${target.toUTCString()})`);
+
+    setTimeout(async () => {
+      await sendDailyReportToAgent();
+      scheduleNextRun(); // schedule next day
+    }, delay);
+  }
+
+  scheduleNextRun();
 }
