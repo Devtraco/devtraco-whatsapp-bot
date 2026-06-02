@@ -22,8 +22,15 @@ app.set("trust proxy", 1);
 
 app.use(express.json({ limit: "1mb" }));
 
-// Serve static files (dashboard)
+// Serve static files (legacy dashboard + assets)
 app.use("/static", express.static(path.join(__dirname, "public")));
+
+// Serve React dashboard app (built to public/app)
+app.use("/app", express.static(path.join(__dirname, "public", "app")));
+// React Router fallback — serve index.html for any /app/* path
+app.get("/app/*", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "app", "index.html"));
+});
 
 // Rate limiting
 const limiter = rateLimit({
