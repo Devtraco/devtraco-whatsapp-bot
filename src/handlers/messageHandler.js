@@ -519,8 +519,20 @@ export async function handleIncomingMessage(messagePayload) {
     const nameMatch = name.match(/(?:my name is|i(?:'m|\s+am)|\bam\b|it's|call me)\s+(.+)/i);
     if (nameMatch) name = nameMatch[1].trim();
 
-    // Step 4: Strip occupation/description suffix (e.g. "Kingsley am a Mason" → "Kingsley")
+    // Step 3b: Strip trailing filler words ("Vicky please" → "Vicky", "Robert ok" → "Robert")
+    name = name.replace(/\s+(?:please|thanks?|ok(?:ay)?|sure|right|dear|sir|madam|bro|sis|yeah|yep|lol)[.!,\s]*$/i, '').trim();
+
+    // Step 4: Strip "I am/am a [occupation]" suffix (e.g. "Kingsley am a Mason" → "Kingsley")
     name = name.replace(/\s+(?:and\s+)?(?:i'?m|i\s+am|\bam\b)\s+(?:a(?:n)?\s+)?.+$/i, '').trim();
+
+    // Step 4b: Strip bare "a/an [2+ descriptor words]" after name (e.g. "Paul Ntori a software developer" → "Paul Ntori")
+    name = name.replace(/\s+an?\s+\w+\s+\w.*$/i, '').trim();
+
+    // Step 4c: Strip "from [organisation/place]" (e.g. "Aishat from Keyless Entrance Group" → "Aishat")
+    name = name.replace(/\s+from\s+.+$/i, '').trim();
+
+    // Step 4d: Strip "who [is/works/lives...]" and "the/of/based/living/working..." descriptors
+    name = name.replace(/\s+(?:who\s+|the\s+|working\s+|based\s+|living\s+).+$/i, '').trim();
 
     // Step 5: Separate name from intent — "Name, I need..." or "Name and I want..."
     const separatorMatch = name.match(/^([^,]+?)\s*[,.]?\s*\b(i\s+(?:need|want|would|am|like|'m)|and\s+i|but\s+i|can\s+you|could|do\s+you|what|how|show|tell|looking|interested).+$/i);
@@ -548,7 +560,9 @@ export async function handleIncomingMessage(messagePayload) {
     const nameWords = name.split(/\s+/);
     const looksLikeName = nameWords.length >= 1 && nameWords.length <= 5 &&
       name.length >= 2 && !name.includes('?') &&
-      !/^(?:ok|okay|yes|no|maybe|sure|fine|you|they|we|hello|hi|hey|sannu|please|greetings?)\b/i.test(name);
+      !/https?:\/\/|www\.\S+|\S+\.(com|org|net|io|gh)\b/i.test(name) &&
+      !/^\d+$/.test(name) &&
+      !/^(?:ok(?:ay)?|yes|no|nope|maybe|sure|fine|you|they|we|hello|hi|hey|sannu|please|greetings?|oh|yeah|yep|thanks?|pls|lol|hm+|wow|nice|good|great|sorry|excuse|test|amen|noted)\b/i.test(name);
 
     if (!looksLikeName) {
       await addMessage(from, "user", userText);
