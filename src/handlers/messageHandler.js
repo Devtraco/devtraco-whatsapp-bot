@@ -379,6 +379,7 @@ export async function handleIncomingMessage(messagePayload) {
     if (interactiveId === "product_buying_home") {
       session.metadata = session.metadata || {};
       session.metadata.productIntent = "buying_home";
+      await updateState(from, "ACTIVE");
       await updateLeadData(from, {});
       await addMessage(from, "user", "Buying a Home");
       await sendPropertyList(from, "residential");
@@ -388,6 +389,7 @@ export async function handleIncomingMessage(messagePayload) {
     if (interactiveId === "product_land_investment") {
       session.metadata = session.metadata || {};
       session.metadata.productIntent = "land_investment";
+      await updateState(from, "ACTIVE");
       await updateLeadData(from, {});
       await addMessage(from, "user", "Investing in Land");
       await sendPropertyList(from, "land_investment");
@@ -397,6 +399,7 @@ export async function handleIncomingMessage(messagePayload) {
     if (interactiveId === "product_catalogue") {
       session.metadata = session.metadata || {};
       session.metadata.productIntent = "catalogue";
+      await updateState(from, "ACTIVE");
       await updateLeadData(from, {});
       await addMessage(from, "user", "Browse our catalogue");
       const catalogueUrl = config.company.catalogueUrl;
