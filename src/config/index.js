@@ -24,9 +24,9 @@ const config = {
     temperature: 0.7,   // warmer, more natural and conversational tone
   },
 
-  // Session
+  // Session — 24h so users can return within a day without re-onboarding
   session: {
-    ttlMinutes: 30,
+    ttlMinutes: 1440,
   },
 
   // MongoDB

@@ -100,21 +100,31 @@ export async function createSession(userId) {
 /**
  * Reset a session after TTL expiry — clears conversation state
  * but PRESERVES history and lead data for dashboard/CRM purposes.
+ *
+ * If the user is a known contact (name already captured), skip re-onboarding
+ * and resume as ACTIVE so the AI can pick up the conversation naturally.
  */
 async function resetSession(userId, oldSession) {
+  const hasName = !!oldSession?.leadData?.name;
   const session = {
     userId,
-    history: oldSession?.history || [],         // keep full history
-    state: "GREETING",                          // reset conversation flow
+    history: oldSession?.history || [],
+    // Known users resume as ACTIVE — no re-onboarding needed
+    // New/anonymous users start fresh at GREETING
+    state: hasName ? "ACTIVE" : "GREETING",
     leadData: oldSession?.leadData || {
       name: null, email: null, phone: userId,
       budget: null, propertyInterest: null,
       preferredLocation: null, timeline: null,
     },
-    leadScore: oldSession?.leadScore || 0,       // keep score
+    leadScore: oldSession?.leadScore || 0,
     lastActivity: Date.now(),
     consentGiven: oldSession?.consentGiven || false,
-    metadata: oldSession?.metadata || {},
+    metadata: {
+      // Clear transient metadata from old session but flag this as a resumption
+      // so messageHandler can optionally personalise the greeting
+      returningUser: hasName,
+    },
   };
   cache.set(userId, session);
   persistSession(session);

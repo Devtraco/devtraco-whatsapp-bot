@@ -437,6 +437,25 @@ export async function handleIncomingMessage(messagePayload) {
     }
   }
 
+  // --- Returning user (session expired but name known) — resume naturally ---
+  // resetSession() sets metadata.returningUser = true when TTL expires for a known contact.
+  // We greet them by name, store the current message, and let the AI continue naturally.
+  if (session.metadata?.returningUser && session.leadData?.name) {
+    delete session.metadata.returningUser;
+    await updateLeadData(from, {}); // persist the metadata deletion
+    await addMessage(from, "user", userText);
+    const name = session.leadData.name;
+    const title = getNameTitle(name);
+    const addressed = title ? `${title} ${name}` : name;
+    await addMessage(from, "assistant", `Welcome back, ${addressed}! 😊`);
+    await sendTextMessage(from, `Welcome back, *${addressed}*! 😊 Great to hear from you again.`);
+    const aiResult = await generateAIResponseFull(from, session);
+    if (aiResult.leadData) await captureLead(from, aiResult.leadData);
+    await sendTextMessage(from, aiResult.text);
+    if (aiResult.scheduleViewing) await handleViewingSchedule(from, aiResult.scheduleViewing);
+    return;
+  }
+
   // --- First message — show welcome, ask name + intent (GDPR shown after intent is known) ---
   if (session.history.length === 0) {
     await addMessage(from, "user", userText); // persist so history.length > 0 on next message
@@ -562,7 +581,12 @@ export async function handleIncomingMessage(messagePayload) {
       name.length >= 2 && !name.includes('?') &&
       !/https?:\/\/|www\.\S+|\S+\.(com|org|net|io|gh)\b/i.test(name) &&
       !/^\d+$/.test(name) &&
-      !/^(?:ok(?:ay)?|yes|no|nope|maybe|sure|fine|you|they|we|hello|hi|hey|sannu|please|greetings?|oh|yeah|yep|thanks?|pls|lol|hm+|wow|nice|good|great|sorry|excuse|test|amen|noted)\b/i.test(name);
+      // Reject common filler words / greetings
+      !/^(?:ok(?:ay)?|yes|no|nope|maybe|sure|fine|you|they|we|hello|hi|hey|sannu|please|greetings?|oh|yeah|yep|thanks?|pls|lol|hm+|wow|nice|good|great|sorry|excuse|test|amen|noted)\b/i.test(name) &&
+      // Reject sentences starting with "I want/need/like/would/am/have/can/called..." — these are intents, not names
+      !/^i\s+(?:want|need|like|would|will|am|have|just|can|could|came|called|calling|was|am|don|don't)\b/i.test(name) &&
+      // Reject other intent phrases
+      !/^(?:looking|need|want|calling|trying|here|can|how|what|where|when|why|please|dear)\b/i.test(name);
 
     if (!looksLikeName) {
       await addMessage(from, "user", userText);
