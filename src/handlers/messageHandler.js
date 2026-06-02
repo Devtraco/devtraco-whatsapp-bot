@@ -296,7 +296,28 @@ export async function handleIncomingMessage(messagePayload) {
       if (aiResult.leadData) await captureLead(from, aiResult.leadData);
       await sendTextMessage(from, aiResult.text);
 
-      // 4. Track cooldown to prevent re-display in the next 5 minutes
+      // 4. Notify land sales agent immediately when a land property is selected
+      if (property.category === "land_investment" || property.type === "Land") {
+        try {
+          const landAgent = config.company.landSalesWhatsApp.replace("+", "");
+          const clientName = session.leadData?.name || "New Lead";
+          const landNotif =
+            `🏡 *Land Property Interest — Devtraco Plus*\n\n` +
+            `A customer is viewing a land plot:\n\n` +
+            `👤 *Name:* ${clientName}\n` +
+            `📱 *Phone:* +${from}\n` +
+            `🏠 *Property:* ${property.name}\n` +
+            `📍 *Location:* ${property.location}\n` +
+            `💰 *Price:* ${property.priceFrom > 0 ? `$${property.priceFrom.toLocaleString()}` : "On Request"}\n\n` +
+            `Reply to client: wa.me/${from}`;
+          await sendTextMessage(landAgent, landNotif);
+          console.log(`[Land] Notified land agent of interest in ${property.name} from ${from}`);
+        } catch (err) {
+          console.error(`[Land] Failed to notify land agent:`, err.message);
+        }
+      }
+
+      // 5. Track cooldown to prevent re-display in the next 5 minutes
       session.metadata = session.metadata || {};
       session.metadata.lastPropertyButtons = { propertyId, time: Date.now() };
 
@@ -1551,9 +1572,15 @@ async function confirmAndCreateViewing(to, pendingData) {
         await sendTextMessage(to, formatViewingConfirmed(confirmed));
         console.log(`[Viewing] Auto-confirmed ${viewing.viewingId} for ${to}`);
 
-        // Notify agent immediately of confirmed viewing
+        // Notify the correct agent based on property type:
+        // land properties → land sales agent, residential → escalation agent
         try {
-          const agentNumber = config.company.escalationWhatsApp.replace("+", "");
+          const isLandProperty = confirmed.propertyId
+            ? (await getPropertyById(confirmed.propertyId))?.category === "land_investment"
+            : false;
+          const agentNumber = isLandProperty
+            ? config.company.landSalesWhatsApp.replace("+", "")
+            : config.company.escalationWhatsApp.replace("+", "");
           const dateDisp = formatDateNice(confirmed.preferredDate);
           const timeDisp = formatTimeNice(confirmed.preferredTime);
           const viewingNotif = `📅 *New Viewing Confirmed*\n\n` +

@@ -342,10 +342,15 @@ router.patch("/viewings/:id", async (req, res) => {
     console.error(`[Viewing] Failed to notify client:`, err.message);
   }
 
-  // Notify agent when confirmed from dashboard
+  // Notify the correct agent when confirmed from dashboard
+  // Land properties go to the land sales agent, residential to escalation agent
   if (status === "CONFIRMED") {
     try {
-      const agentNumber = config.company.escalationWhatsApp.replace("+", "");
+      const viewingProperty = viewing.propertyId ? await getPropertyById(viewing.propertyId) : null;
+      const isLand = viewingProperty?.category === "land_investment" || viewingProperty?.type === "Land";
+      const agentNumber = isLand
+        ? config.company.landSalesWhatsApp.replace("+", "")
+        : config.company.escalationWhatsApp.replace("+", "");
       const clientPhone = viewing.phone || viewing.userId || "N/A";
       const agentMsg =
         `📅 *New Viewing Confirmed (Dashboard)*\n\n` +
