@@ -1,31 +1,37 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Megaphone, Plus, Trash2, Send, Clock, CheckCircle, XCircle } from "lucide-react";
+import { Megaphone, Plus, Trash2, Send, CheckCircle, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { fmtRelative, fmtDateTime } from "@/lib/utils";
 import { Badge, Button, Card, CardHeader, CardBody, Modal, Input, Textarea, PageLoader, Empty, ErrorBanner } from "@/components/ui";
 
 export default function Broadcasts() {
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", message: "" });
+  // Draft uses { title, message } — NOT { name, message }
+  const [form, setForm] = useState({ title: "", message: "" });
   const [formError, setFormError] = useState("");
   const qc = useQueryClient();
 
-  const { data: draftsData, isLoading: dLoading } = useQuery({ queryKey: ["broadcastDrafts"], queryFn: api.broadcastDrafts });
+  const { data: draftsData, isLoading: dLoading } = useQuery({ queryKey: ["broadcastDrafts"],  queryFn: api.broadcastDrafts });
   const { data: resultsData, isLoading: rLoading } = useQuery({ queryKey: ["broadcastResults"], queryFn: api.broadcastResults });
 
   const createMutation = useMutation({
     mutationFn: (data) => api.createDraft(data),
-    onSuccess: () => { qc.invalidateQueries(["broadcastDrafts"]); setShowForm(false); setForm({ name: "", message: "" }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["broadcastDrafts"] });
+      setShowForm(false);
+      setForm({ title: "", message: "" });
+      setFormError("");
+    },
     onError: (err) => setFormError(err.message),
   });
 
-  const deleteDraftMutation = useMutation({
+  const deleteMutation = useMutation({
     mutationFn: api.deleteDraft,
-    onSuccess: () => qc.invalidateQueries(["broadcastDrafts"]),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["broadcastDrafts"] }),
   });
 
-  const drafts = draftsData?.drafts || [];
+  const drafts  = draftsData?.drafts   || [];
   const results = resultsData?.results || [];
 
   if (dLoading || rLoading) return <PageLoader />;
@@ -35,58 +41,80 @@ export default function Broadcasts() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Broadcasts</h2>
-          <p className="text-sm text-slate-400">Send bulk messages to your leads</p>
+          <p className="text-sm text-slate-400">Send bulk WhatsApp messages to your leads</p>
         </div>
-        <Button icon={Plus} onClick={() => setShowForm(true)}>New Draft</Button>
+        <Button icon={Plus} onClick={() => { setShowForm(true); setFormError(""); }}>New Draft</Button>
       </div>
 
       {/* Draft form modal */}
       <Modal open={showForm} onClose={() => setShowForm(false)} title="New Broadcast Draft" width="max-w-lg">
         <div className="p-6 space-y-4">
           <ErrorBanner message={formError} />
-          <Input label="Campaign Name *" value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            placeholder="e.g. June Promo — Arlo Cantonments" />
-          <Textarea label="Message *" value={form.message}
+          <Input
+            label="Campaign Title *"
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            placeholder="e.g. June Promo — Arlo Cantonments"
+          />
+          <Textarea
+            label="Message *"
+            value={form.message}
             onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
-            placeholder="Hello {name}! We have an exciting offer for you at Devtraco Plus…"
-            rows={5} />
-          <p className="text-xs text-slate-400">Use <code className="bg-slate-100 px-1 rounded">{"{name}"}</code> to personalise with the lead's name.</p>
-          <div className="flex gap-2 justify-end">
+            placeholder="Hello {name}! We have an exciting update at Devtraco Plus…"
+            rows={5}
+          />
+          <p className="text-xs text-slate-400">
+            Use <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono">{"{name}"}</code> to personalise with the lead's first name.
+          </p>
+          <div className="flex gap-2 justify-end pt-1">
             <Button variant="secondary" size="sm" onClick={() => setShowForm(false)}>Cancel</Button>
-            <Button size="sm" loading={createMutation.isPending} onClick={() => createMutation.mutate(form)}>Save Draft</Button>
+            <Button
+              size="sm"
+              loading={createMutation.isPending}
+              onClick={() => {
+                if (!form.title || !form.message) { setFormError("Title and message are required."); return; }
+                createMutation.mutate(form);
+              }}
+            >
+              Save Draft
+            </Button>
           </div>
         </div>
       </Modal>
 
       {/* Drafts */}
       <Card>
-        <CardHeader action={<Badge variant="default">{drafts.length}</Badge>}>
-          <p className="font-semibold text-slate-900">Drafts</p>
-          <p className="text-xs text-slate-400">Ready to send campaigns</p>
+        <CardHeader action={<Badge variant="default">{drafts.length} drafts</Badge>}>
+          <p className="font-semibold text-slate-900">Saved Drafts</p>
+          <p className="text-xs text-slate-400">Campaigns ready to send</p>
         </CardHeader>
         {drafts.length === 0 ? (
           <CardBody>
-            <Empty icon={Megaphone} title="No drafts" description="Create a draft to start your broadcast campaign."
+            <Empty icon={Megaphone} title="No drafts yet"
+              description="Create a draft to compose your broadcast message before sending."
               action={<Button icon={Plus} size="sm" onClick={() => setShowForm(true)}>New Draft</Button>} />
           </CardBody>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {drafts.map((d) => (
-              <li key={d.id || d._id} className="px-5 py-4 flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-slate-800 truncate">{d.name}</p>
-                  <p className="text-sm text-slate-500 truncate mt-0.5">{d.message?.slice(0, 100)}…</p>
-                  <p className="text-xs text-slate-400 mt-1">{fmtRelative(d.createdAt)}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => { if (confirm(`Delete draft "${d.name}"?`)) deleteDraftMutation.mutate(d.id || d._id); }}
-                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </li>
-            ))}
+            {drafts.map((d) => {
+              const id = d.draftId || d._id || d.id;
+              return (
+                <li key={id} className="px-5 py-4 flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-slate-800 truncate">{d.title || d.name || "Untitled draft"}</p>
+                    <p className="text-sm text-slate-500 mt-0.5 line-clamp-2">{d.message}</p>
+                    <p className="text-xs text-slate-400 mt-1.5">{fmtRelative(d.createdAt)}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 mt-1">
+                    <button
+                      onClick={() => { if (confirm(`Delete "${d.title || "this draft"}"?`)) deleteMutation.mutate(id); }}
+                      className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>
@@ -95,10 +123,13 @@ export default function Broadcasts() {
       <Card>
         <CardHeader>
           <p className="font-semibold text-slate-900">Broadcast History</p>
-          <p className="text-xs text-slate-400">Past campaigns and results</p>
+          <p className="text-xs text-slate-400">Past campaigns and delivery results</p>
         </CardHeader>
         {results.length === 0 ? (
-          <CardBody><Empty icon={Send} title="No broadcasts sent yet" /></CardBody>
+          <CardBody>
+            <Empty icon={Send} title="No broadcasts sent yet"
+              description="Once you send a broadcast campaign, the results will appear here." />
+          </CardBody>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -110,13 +141,21 @@ export default function Broadcasts() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {results.map((r) => (
-                  <tr key={r.id || r._id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-semibold text-slate-800">{r.name || "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">{r.totalSent ?? "—"}</td>
-                    <td className="px-4 py-3"><span className="text-emerald-600 font-medium">{r.delivered ?? "—"}</span></td>
-                    <td className="px-4 py-3"><span className="text-red-500 font-medium">{r.failed ?? "—"}</span></td>
-                    <td className="px-4 py-3 text-slate-400 text-xs">{fmtDateTime(r.createdAt)}</td>
+                {results.map((r, i) => (
+                  <tr key={r.broadcastId || r._id || i} className="hover:bg-slate-50">
+                    <td className="px-4 py-3 font-semibold text-slate-800">{r.title || r.name || "—"}</td>
+                    <td className="px-4 py-3 text-slate-600 tabular-nums">{r.totalSent ?? r.sent ?? "—"}</td>
+                    <td className="px-4 py-3">
+                      <span className="text-emerald-600 font-semibold tabular-nums flex items-center gap-1">
+                        <CheckCircle size={12} />{r.delivered ?? "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-red-500 font-semibold tabular-nums flex items-center gap-1">
+                        <XCircle size={12} />{r.failed ?? "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-400 text-xs">{fmtDateTime(r.createdAt || r.sentAt)}</td>
                   </tr>
                 ))}
               </tbody>

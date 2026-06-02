@@ -41,27 +41,24 @@ export const api = {
       return r.json();
     }),
 
-  // Stats
-  stats: () => request("/stats"),
+  stats:  () => request("/stats"),
   health: () => request("/health"),
 
   // Leads
   leads: () => request("/leads"),
-  lead: (id) => request(`/leads/${id}`),
+  lead:  (id) => request(`/leads/${id}`),
 
   // Conversations
-  conversations: () => request("/conversations"),
-  conversation: (id) => request(`/conversations/${id}`),
-  deleteConversation: (id) => request(`/conversations/${id}`, { method: "DELETE" }),
+  conversations:       () => request("/conversations"),
+  conversation:        (id) => request(`/conversations/${id}`),
+  deleteConversation:  (id) => request(`/conversations/${id}`, { method: "DELETE" }),
   deleteAllConversations: () => request("/conversations", { method: "DELETE" }),
 
   // Properties
-  properties: () => request("/properties"),
-  property: (id) => request(`/properties/${id}`),
-  createProperty: (data) =>
-    request("/properties", { method: "POST", body: JSON.stringify(data) }),
-  updateProperty: (id, data) =>
-    request(`/properties/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  properties:     () => request("/properties"),
+  property:       (id) => request(`/properties/${id}`),
+  createProperty: (data) => request("/properties", { method: "POST", body: JSON.stringify(data) }),
+  updateProperty: (id, data) => request(`/properties/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteProperty: (id) => request(`/properties/${id}`, { method: "DELETE" }),
   propertyImages: (id) => request(`/properties/${id}/images`),
   propertyVideos: (id) => request(`/properties/${id}/videos`),
@@ -70,35 +67,31 @@ export const api = {
     for (const f of files) fd.append("images", f);
     return request(`/properties/${id}/images`, { method: "POST", body: fd });
   },
-  uploadVideos: (id, files) => {
-    const fd = new FormData();
-    for (const f of files) fd.append("videos", f);
-    return request(`/properties/${id}/videos`, { method: "POST", body: fd });
-  },
   deleteImage: (imageId) => request(`/images/${imageId}`, { method: "DELETE" }),
   deleteVideo: (videoId) => request(`/videos/${videoId}`, { method: "DELETE" }),
 
-  // Viewings
-  viewings: () => request("/viewings"),
-  viewing: (id) => request(`/viewings/${id}`),
+  // Viewings — status values MUST be uppercase: CONFIRMED | CANCELLED | COMPLETED
+  viewings:           () => request("/viewings"),
+  deleteViewing:      (id) => request(`/viewings/${id}`, { method: "DELETE" }),
+  deleteAllViewings:  () => request("/viewings", { method: "DELETE" }),
   updateViewingStatus: (id, status) =>
-    request(`/viewings/${id}/status`, { method: "PUT", body: JSON.stringify({ status }) }),
-  deleteViewing: (id) => request(`/viewings/${id}`, { method: "DELETE" }),
-  availableSlots: (date) => request(`/viewings/slots?date=${date}`),
+    request(`/viewings/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+  notifyAgent: (id) =>
+    request(`/viewings/${id}/notify-agent`, { method: "POST" }),
 
-  // Broadcasts
-  broadcastDrafts: () => request("/broadcast/drafts"),
-  broadcastDraft: (id) => request(`/broadcast/drafts/${id}`),
+  // Broadcasts — drafts use { title, message } (not name)
+  broadcastDrafts:  () => request("/broadcast/drafts"),
+  broadcastDraft:   (id) => request(`/broadcast/drafts/${id}`),
   createDraft: (data) =>
     request("/broadcast/drafts", { method: "POST", body: JSON.stringify(data) }),
   updateDraft: (id, data) =>
     request(`/broadcast/drafts/${id}`, { method: "PUT", body: JSON.stringify(data) }),
-  deleteDraft: (id) => request(`/broadcast/drafts/${id}`, { method: "DELETE" }),
+  deleteDraft: (id) =>
+    request(`/broadcast/drafts/${id}`, { method: "DELETE" }),
   broadcastResults: () => request("/broadcast/results"),
-  sendBroadcast: (data) =>
-    request("/broadcast/send", { method: "POST", body: JSON.stringify(data) }),
+  broadcastStatus:  () => request("/broadcast/status"),
 
   // CRM
   crmStats: () => request("/crm/stats"),
-  crmLog: () => request("/crm/log"),
+  crmLog:   () => request("/crm/log"),
 };
