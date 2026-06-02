@@ -855,25 +855,36 @@
           </div>
           <div class="form-group">
             <label class="form-label">Type *</label>
-            <select id="pf_type" required class="form-select">
+            <select id="pf_type" required class="form-select" onchange="handlePropertyTypeChange()">
               <option value="">Select type</option>
               <option value="Apartments">Apartments</option>
               <option value="Hotel Apartments">Hotel Apartments</option>
               <option value="Townhouses">Townhouses</option>
               <option value="Townhomes">Townhomes</option>
+              <option value="Land">Land</option>
             </select>
           </div>
           <div class="form-group">
+            <label class="form-label">Category</label>
+            <select id="pf_category" class="form-select">
+              <option value="residential">Residential</option>
+              <option value="land_investment">Land Investment</option>
+            </select>
+          </div>
+          <div class="form-group" id="pf_bedroomsGroup">
             <label class="form-label">Bedrooms</label>
             <input type="text" id="pf_bedrooms" placeholder="e.g. 1,2,3 or 1-3" class="form-input">
           </div>
           <div class="form-group">
-            <label class="form-label">Starting Price (USD) *</label>
-            <input type="number" id="pf_priceFrom" required min="0" placeholder="e.g. 150000" class="form-input">
+            <label class="form-label">Starting Price (USD)</label>
+            <input type="number" id="pf_priceFrom" min="0" placeholder="e.g. 150000 (leave blank or 0 = On Request)" class="form-input">
           </div>
           <div class="form-group">
             <label class="form-label">Currency</label>
-            <input type="text" id="pf_currency" value="USD" class="form-input">
+            <select id="pf_currency" class="form-select">
+              <option value="USD">USD — US Dollar</option>
+              <option value="GHS">GHS — Ghanaian Cedi</option>
+            </select>
           </div>
           <div class="form-group">
             <label class="form-label">Status</label>
@@ -1716,7 +1727,7 @@
           <td><strong>${escapeHtml(p.name)}</strong></td>
           <td>${escapeHtml(p.location)}</td>
           <td>${escapeHtml(p.type)}</td>
-          <td>$${Number(p.priceFrom).toLocaleString()}</td>
+          <td>${p.priceFrom > 0 ? '$' + Number(p.priceFrom).toLocaleString() : '<span style="color:var(--text-muted);font-size:11px;font-style:italic;">On Request</span>'}</td>
           <td><span class="badge ${p.status === 'Now Selling' ? 'badge-success' : p.status === 'Coming Soon' ? 'badge-warning' : 'badge-danger'}">${escapeHtml(p.status)}</span></td>
           <td>${p.projectUrl ? `<a href="${p.projectUrl}" target="_blank" style="color:var(--brand);text-decoration:none;font-size:12px;">Visit &rarr;</a>` : '\u2014'}</td>
           <td style="white-space:nowrap;">
@@ -1756,6 +1767,8 @@
     document.getElementById('propertyForm').reset();
     document.getElementById('pf_editId').value = '';
     document.getElementById('pf_currency').value = 'USD';
+    document.getElementById('pf_category').value = 'residential';
+    document.getElementById('pf_bedroomsGroup').style.display = '';
     document.getElementById('propertyFormTitle').textContent = 'Add New Property';
     document.getElementById('propertySubmitBtn').textContent = 'Add Property';
     document.getElementById('cancelEditBtn').classList.add('hidden');
@@ -1763,18 +1776,31 @@
     document.getElementById('pf_videoPreview').innerHTML = '';
   }
 
+  function handlePropertyTypeChange() {
+    const type = document.getElementById('pf_type').value;
+    const isLand = type === 'Land';
+    const bedroomsGroup = document.getElementById('pf_bedroomsGroup');
+    bedroomsGroup.style.display = isLand ? 'none' : '';
+    if (isLand) document.getElementById('pf_bedrooms').value = '';
+    const cat = document.getElementById('pf_category');
+    if (isLand && cat.value === 'residential') cat.value = 'land_investment';
+    if (!isLand && cat.value === 'land_investment') cat.value = 'residential';
+  }
+
   function editProperty(p) {
     document.getElementById('pf_editId').value = p.propertyId || p.id;
     document.getElementById('pf_name').value = p.name || '';
     document.getElementById('pf_location').value = p.location || '';
     document.getElementById('pf_type').value = p.type || '';
+    document.getElementById('pf_category').value = p.category || 'residential';
     document.getElementById('pf_bedrooms').value = (p.bedrooms || []).join(', ');
-    document.getElementById('pf_priceFrom').value = p.priceFrom || '';
+    document.getElementById('pf_priceFrom').value = p.priceFrom > 0 ? p.priceFrom : '';
     document.getElementById('pf_currency').value = p.currency || 'USD';
     document.getElementById('pf_status').value = p.status || 'Now Selling';
     document.getElementById('pf_projectUrl').value = p.projectUrl || '';
     document.getElementById('pf_amenities').value = (p.amenities || []).join(', ');
     document.getElementById('pf_description').value = p.description || '';
+    handlePropertyTypeChange();
     document.getElementById('propertyFormTitle').textContent = 'Edit Property';
     document.getElementById('propertySubmitBtn').textContent = 'Update Property';
     document.getElementById('cancelEditBtn').classList.remove('hidden');
@@ -1804,12 +1830,14 @@
     const imageFiles = document.getElementById('pf_images').files;
     const videoFiles = document.getElementById('pf_videos').files;
 
+    const priceRaw = document.getElementById('pf_priceFrom').value;
     const body = {
       name: document.getElementById('pf_name').value,
       location: document.getElementById('pf_location').value,
       type: document.getElementById('pf_type').value,
+      category: document.getElementById('pf_category').value,
       bedrooms: bedroomsRaw,
-      priceFrom: Number(document.getElementById('pf_priceFrom').value),
+      priceFrom: priceRaw !== '' ? Number(priceRaw) : 0,
       currency: document.getElementById('pf_currency').value || 'USD',
       status: document.getElementById('pf_status').value,
       projectUrl: document.getElementById('pf_projectUrl').value,
