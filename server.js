@@ -28,7 +28,7 @@ app.use("/static", express.static(path.join(__dirname, "public")));
 // Serve React dashboard app (built to public/app)
 app.use("/app", express.static(path.join(__dirname, "public", "app")));
 // React Router fallback — serve index.html for any /app/* path
-app.get("/app/*", (req, res) => {
+app.get("/app/*splat", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "app", "index.html"));
 });
 
