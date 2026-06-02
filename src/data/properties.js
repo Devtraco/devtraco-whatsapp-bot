@@ -242,7 +242,7 @@ const DEFAULT_PROPERTIES = [
     amenities: ["Master-Planned Gated Community", "24/7 Security", "Well-Planned Roads", "Reliable Water Supply", "Reliable Power Supply", "Beach Access (15 mins)", "Complementary Architecture Plan", "Bill of Quantities (BOQ) Included"],
     status: "Now Selling",
     category: "land_investment",
-    images: [],
+    images: ["https://woodlands.devtracogroup.com/wp-content/uploads/2024/05/Jute-1.png"],
     projectUrl: "https://woodlands.devtracogroup.com/",
     description: "A 40×70 ft surveyed land plot within Woodlands — a 592-acre master-planned gated city in Dawhenya, 1 minute from Central University. Features well-planned roads, reliable utilities, and round-the-clock security. Beach access within 15 minutes. Each plot comes with a complementary architecture plan and Bill of Quantities.",
   },
@@ -257,7 +257,7 @@ const DEFAULT_PROPERTIES = [
     amenities: ["Master-Planned Gated Community", "24/7 Security", "Well-Planned Roads", "Reliable Water Supply", "Reliable Power Supply", "Beach Access (15 mins)", "Complementary Architecture Plan", "Bill of Quantities (BOQ) Included"],
     status: "Now Selling",
     category: "land_investment",
-    images: [],
+    images: ["https://woodlands.devtracogroup.com/wp-content/uploads/2024/05/Orchid-1.png"],
     projectUrl: "https://woodlands.devtracogroup.com/",
     description: "An 80×70 ft surveyed land plot within Woodlands — a 592-acre master-planned gated city in Dawhenya, 1 minute from Central University. Features well-planned roads, reliable utilities, and round-the-clock security. Beach access within 15 minutes. Each plot comes with a complementary architecture plan and Bill of Quantities.",
   },
@@ -381,7 +381,8 @@ export async function getPropertyById(id) {
   if (isDBConnected()) {
     try {
       const doc = await PropertyModel.findOne({ propertyId: id, active: true }).lean();
-      return doc ? docToProperty(doc) : null;
+      if (doc) return docToProperty(doc);
+      // DB connected but property missing (not yet seeded) — fall through to defaults
     } catch (err) {
       console.error("[Properties] DB getById failed:", err.message);
     }

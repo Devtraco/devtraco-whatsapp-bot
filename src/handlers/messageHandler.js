@@ -604,11 +604,44 @@ export async function handleIncomingMessage(messagePayload) {
   // --- Country collection (after name) ---
   if (session.state === "AWAITING_COUNTRY") {
     const country = userText.trim();
+    session.metadata = session.metadata || {};
+
+    // Detect explicit refusal ("no", "skip", "i said no", "don't want to share", etc.)
+    const isCountryRefusal = /^(?:no(?:[\s,!.]*(?:thanks?|thank\s+you|problem|need)?)?|nope|skip|don.?t\s+(?:want|have|know)|prefer\s+not|rather\s+not|private|anonymous|i\s+said\s+no|not\s+(?:giving|sharing|telling)|i\s+(?:don.?t|won.?t|prefer\s+not|rather\s+not)\b)[\s.!,]*$/i.test(country);
 
     // Basic validation — accept any country-like input (at least 2 chars, no excessive symbols)
     const looksLikeCountry = country.length >= 2 && country.length <= 100 &&
       !country.includes('?') &&
       !/^(?:ok|okay|yes|no|maybe|sure|fine|please|what|where|when|why|how)\b/i.test(country);
+
+    // Track invalid attempts so we don't loop forever
+    if (!looksLikeCountry && !isCountryRefusal) {
+      session.metadata.countryAttempts = (session.metadata.countryAttempts || 0) + 1;
+    }
+
+    const shouldProceedWithoutCountry = isCountryRefusal || session.metadata.countryAttempts >= 2;
+
+    if (shouldProceedWithoutCountry) {
+      // Accept the refusal gracefully — proceed to product intent without country
+      delete session.metadata.countryAttempts;
+      delete session.metadata.inWelcomeFlow;
+      await addMessage(from, "user", userText);
+      await updateLeadData(from, {});
+      await updateState(from, "AWAITING_PRODUCT_INTENT");
+      await sendTextMessage(from, `No problem at all! 😊\n\nWhat are you interested in?`);
+      await sendButtonMessage(
+        from,
+        "Choose one of the options below:",
+        [
+          { id: "product_buying_home", title: "🏠 Buy Home" },
+          { id: "product_land_investment", title: "📍 Land Investment" },
+          { id: "product_catalogue", title: "📄 Catalogue" },
+        ],
+        "Product Selection",
+        "Devtraco Plus"
+      );
+      return;
+    }
 
     if (!looksLikeCountry) {
       await addMessage(from, "user", userText);
@@ -616,6 +649,7 @@ export async function handleIncomingMessage(messagePayload) {
       return;
     }
 
+    delete session.metadata.countryAttempts;
     await updateLeadData(from, { country });
     await addMessage(from, "user", userText);
 
