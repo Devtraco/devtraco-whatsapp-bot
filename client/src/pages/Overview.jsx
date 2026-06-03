@@ -210,8 +210,8 @@ export default function Overview() {
               <AreaChart data={trend} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gLeads" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor="#0d9488" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#0d9488" stopOpacity={0}   />
+                    <stop offset="5%"  stopColor="#c9920e" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#c9920e" stopOpacity={0}   />
                   </linearGradient>
                   <linearGradient id="gHot" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%"  stopColor="#ef4444" stopOpacity={0.2} />
@@ -222,7 +222,7 @@ export default function Overview() {
                 <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.07)" }} />
-                <Area type="monotone" dataKey="leads" stroke="#0d9488" strokeWidth={2.5} fill="url(#gLeads)" name="All Leads" dot={false} />
+                <Area type="monotone" dataKey="leads" stroke="#c9920e" strokeWidth={2.5} fill="url(#gLeads)" name="All Leads" dot={false} />
                 <Area type="monotone" dataKey="hot"   stroke="#ef4444" strokeWidth={2}   fill="url(#gHot)"   name="Hot Leads" dot={false} />
               </AreaChart>
             </ResponsiveContainer>
@@ -273,7 +273,7 @@ export default function Overview() {
                 <XAxis type="number" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} width={130} />
                 <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }} />
-                <Bar dataKey="value" fill="#0d9488" radius={[0, 6, 6, 0]} name="Enquiries" maxBarSize={28} />
+                <Bar dataKey="value" fill="#c9920e" radius={[0, 6, 6, 0]} name="Enquiries" maxBarSize={28} />
               </BarChart>
             </ResponsiveContainer>
           </CardBody>

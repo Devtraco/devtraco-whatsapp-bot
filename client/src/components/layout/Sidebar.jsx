@@ -1,17 +1,19 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Users, Building2, MessageSquare,
-  Calendar, Megaphone, Settings, LogOut, ChevronRight,
+  Calendar, Megaphone, Settings, LogOut, ChevronRight, Siren,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const LOGO = "https://devtracoplus.com/site/assets/files/1/devtracoplus_logo_298_x_125_-01.png";
+const LOGO_FULL  = "https://devtracoplus.com/site/assets/files/1/devtracoplus_logo_298_x_125_-01.png";
+const LOGO_ICON  = "https://devtracogroup.com/wp-content/uploads/2019/06/DG-favv.svg";
 
 const nav = [
   { to: "/app/overview",      icon: LayoutDashboard, label: "Overview"      },
   { to: "/app/leads",         icon: Users,           label: "Leads"         },
   { to: "/app/properties",    icon: Building2,       label: "Properties"    },
   { to: "/app/conversations", icon: MessageSquare,   label: "Conversations" },
+  { to: "/app/escalations",   icon: Siren,           label: "Escalations"   },
   { to: "/app/viewings",      icon: Calendar,        label: "Viewings"      },
   { to: "/app/broadcasts",    icon: Megaphone,       label: "Broadcasts"    },
 ];
@@ -31,30 +33,35 @@ export default function Sidebar({ collapsed, onToggle }) {
     )}>
       {/* Logo */}
       <div className={cn(
-        "flex items-center h-16 border-b border-white/10 overflow-hidden transition-all",
-        collapsed ? "px-3 justify-center" : "px-4 gap-3"
+        "flex items-center h-16 border-b border-white/10 overflow-hidden",
+        collapsed ? "justify-center px-3" : "px-5 gap-3"
       )}>
         {collapsed ? (
-          <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center font-bold text-xs text-white shrink-0">
-            D+
-          </div>
-        ) : (
+          /* Small icon version when collapsed */
           <img
-            src={LOGO}
-            alt="Devtraco Plus"
-            className="h-7 w-auto object-contain"
+            src={LOGO_ICON}
+            alt="Devtraco"
+            className="w-8 h-8 object-contain"
             onError={(e) => {
               e.target.style.display = "none";
-              e.target.nextSibling.style.display = "flex";
+              e.target.insertAdjacentHTML("afterend",
+                `<div class="w-8 h-8 bg-gold-DEFAULT rounded-lg flex items-center justify-center text-white font-bold text-xs">D</div>`
+              );
             }}
           />
-        )}
-        {/* Fallback if logo fails */}
-        {!collapsed && (
-          <div className="hidden items-center gap-2">
-            <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center font-bold text-xs">D+</div>
-            <span className="font-semibold text-sm">Devtraco Plus</span>
-          </div>
+        ) : (
+          /* Full logo when expanded */
+          <img
+            src={LOGO_FULL}
+            alt="Devtraco Plus"
+            className="h-7 w-auto object-contain object-left"
+            onError={(e) => {
+              e.target.style.display = "none";
+              e.target.insertAdjacentHTML("afterend",
+                `<span class="text-white font-bold text-sm tracking-wide">Devtraco Plus</span>`
+              );
+            }}
+          />
         )}
       </div>
 
@@ -73,16 +80,16 @@ export default function Sidebar({ collapsed, onToggle }) {
             to={to}
             title={collapsed ? label : undefined}
             className={({ isActive }) => cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all group",
+              "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
               isActive
-                ? "bg-brand-600 text-white shadow-sm shadow-brand-600/40"
+                ? "bg-brand-600 text-white shadow-sm"
                 : "text-white/55 hover:bg-white/8 hover:text-white"
             )}
           >
             {({ isActive }) => (
               <>
                 <Icon size={18} className="shrink-0" />
-                {!collapsed && <span className="truncate flex-1">{label}</span>}
+                {!collapsed && <span className="flex-1 truncate">{label}</span>}
                 {!collapsed && isActive && <ChevronRight size={13} className="opacity-60 shrink-0" />}
               </>
             )}
@@ -117,7 +124,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       <button
         onClick={onToggle}
         className="absolute -right-3 top-[68px] z-20 w-6 h-6 bg-navy-900 border border-white/20 rounded-full flex items-center justify-center text-white/50 hover:text-white transition-colors shadow-md"
-        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        title={collapsed ? "Expand" : "Collapse"}
       >
         <ChevronRight size={12} className={cn("transition-transform duration-300", collapsed ? "" : "rotate-180")} />
       </button>

@@ -8,6 +8,7 @@ const TITLES = {
   "/app/leads":         "Leads",
   "/app/properties":    "Properties",
   "/app/conversations": "Conversations",
+  "/app/escalations":   "Escalations",
   "/app/viewings":      "Viewings",
   "/app/broadcasts":    "Broadcasts",
   "/app/settings":      "Settings",

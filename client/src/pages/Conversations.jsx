@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Trash2, MessageSquare, X } from "lucide-react";
+import { Search, Trash2, MessageSquare, X, Calendar } from "lucide-react";
+import { startOfDay, startOfWeek, startOfMonth, subDays, isAfter } from "date-fns";
 import { api } from "@/lib/api";
 import { fmtRelative, fmtPhone, truncate, avatarColor, initials } from "@/lib/utils";
 import { Badge, Card, PageLoader, Empty } from "@/components/ui";
@@ -13,13 +14,32 @@ function stateBadgeVariant(state) {
   return "slate";
 }
 
-function stateLabel(s) {
-  return s?.replace(/_/g, " ") || "—";
+const DATE_FILTERS = [
+  { key: "all",       label: "All time" },
+  { key: "today",     label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
+  { key: "week",      label: "This week" },
+  { key: "month",     label: "This month" },
+  { key: "custom",    label: "Custom range" },
+];
+
+function getDateBound(key) {
+  const now = new Date();
+  switch (key) {
+    case "today":     return startOfDay(now);
+    case "yesterday": return startOfDay(subDays(now, 1));
+    case "week":      return startOfWeek(now, { weekStartsOn: 1 });
+    case "month":     return startOfMonth(now);
+    default:          return null;
+  }
 }
 
 export default function Conversations() {
-  const [search,   setSearch]   = useState("");
-  const [selected, setSelected] = useState(null);
+  const [search,     setSearch]     = useState("");
+  const [selected,   setSelected]   = useState(null);
+  const [dateFilter, setDateFilter] = useState("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo,   setCustomTo]   = useState("");
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -36,19 +56,51 @@ export default function Conversations() {
 
   const deleteMutation = useMutation({
     mutationFn: api.deleteConversation,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["conversations"] });
-      setSelected(null);
-    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["conversations"] }); setSelected(null); },
   });
 
-  const list = (data?.conversations || [])
-    .filter((c) => {
-      if (!search) return true;
+  const list = useMemo(() => {
+    let items = data?.conversations || [];
+
+    // Text search
+    if (search) {
       const q = search.toLowerCase();
-      return String(c.userId).includes(q) || c.name?.toLowerCase().includes(q) || c.lastMessage?.toLowerCase().includes(q);
-    })
-    .sort((a, b) => new Date(b.lastActivity || 0) - new Date(a.lastActivity || 0));
+      items = items.filter((c) =>
+        String(c.userId).includes(q) ||
+        c.name?.toLowerCase().includes(q) ||
+        c.lastMessage?.toLowerCase().includes(q)
+      );
+    }
+
+    // Date filter
+    if (dateFilter !== "all" && dateFilter !== "custom") {
+      const bound = getDateBound(dateFilter);
+      if (bound) {
+        if (dateFilter === "yesterday") {
+          const end = startOfDay(new Date());
+          items = items.filter((c) => {
+            const d = new Date(c.lastActivity || 0);
+            return isAfter(d, bound) && !isAfter(d, end);
+          });
+        } else {
+          items = items.filter((c) => isAfter(new Date(c.lastActivity || 0), bound));
+        }
+      }
+    }
+
+    if (dateFilter === "custom") {
+      if (customFrom) {
+        const from = new Date(customFrom);
+        items = items.filter((c) => isAfter(new Date(c.lastActivity || 0), from));
+      }
+      if (customTo) {
+        const to = new Date(customTo + "T23:59:59");
+        items = items.filter((c) => new Date(c.lastActivity || 0) <= to);
+      }
+    }
+
+    return items.sort((a, b) => new Date(b.lastActivity || 0) - new Date(a.lastActivity || 0));
+  }, [data, search, dateFilter, customFrom, customTo]);
 
   if (isLoading) return <PageLoader />;
 
@@ -56,10 +108,11 @@ export default function Conversations() {
     <div className="max-w-[1400px]">
       <div className="flex gap-5" style={{ height: "calc(100vh - 144px)" }}>
 
-        {/* Left — list */}
+        {/* ── Left panel — list ── */}
         <Card className="w-80 shrink-0 flex flex-col overflow-hidden">
+
           {/* Search */}
-          <div className="px-4 py-3 border-b border-slate-100 space-y-2">
+          <div className="px-4 pt-3 pb-2 border-b border-slate-100 space-y-2">
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
@@ -74,20 +127,69 @@ export default function Conversations() {
                 </button>
               )}
             </div>
-            <p className="text-xs text-slate-400">{list.length} conversations</p>
+
+            {/* Date filter */}
+            <div className="flex gap-1 flex-wrap">
+              {DATE_FILTERS.filter((f) => f.key !== "custom").map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setDateFilter(f.key)}
+                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${
+                    dateFilter === f.key
+                      ? "bg-navy-900 text-white"
+                      : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+              <button
+                onClick={() => setDateFilter("custom")}
+                className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all flex items-center gap-1 ${
+                  dateFilter === "custom"
+                    ? "bg-navy-900 text-white"
+                    : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                }`}
+              >
+                <Calendar size={10} /> Custom
+              </button>
+            </div>
+
+            {/* Custom date range inputs */}
+            {dateFilter === "custom" && (
+              <div className="flex gap-1.5 items-center">
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="flex-1 px-2 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-brand-500"
+                />
+                <span className="text-xs text-slate-400">–</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="flex-1 px-2 py-1.5 text-xs border border-slate-200 rounded-lg outline-none focus:border-brand-500"
+                />
+              </div>
+            )}
+
+            <p className="text-[10px] text-slate-400">{list.length} conversation{list.length !== 1 ? "s" : ""}</p>
           </div>
 
-          {/* List */}
+          {/* Conversation list */}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
             {list.length === 0 ? (
-              <Empty icon={MessageSquare} title="No conversations" description="WhatsApp conversations will appear here." />
+              <Empty icon={MessageSquare} title="No conversations" description="Try adjusting the date filter or search." />
             ) : list.map((c) => (
               <button
                 key={c.userId}
                 onClick={() => setSelected(c)}
-                className={`w-full text-left px-4 py-3.5 hover:bg-slate-50 transition-colors flex items-start gap-3 ${selected?.userId === c.userId ? "bg-brand-50 border-l-2 border-brand-500" : ""}`}
+                className={`w-full text-left px-4 py-3.5 hover:bg-slate-50 transition-colors flex items-start gap-3 ${
+                  selected?.userId === c.userId ? "bg-brand-50 border-l-2 border-brand-600" : ""
+                }`}
               >
-                <div className={`w-10 h-10 rounded-full ${avatarColor(c.name || c.userId)} flex items-center justify-center text-white text-xs font-bold shrink-0 mt-0.5`}>
+                <div className={`w-9 h-9 rounded-full ${avatarColor(c.name || c.userId)} flex items-center justify-center text-white text-xs font-bold shrink-0 mt-0.5`}>
                   {initials(c.name || c.userId)}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -98,7 +200,7 @@ export default function Conversations() {
                   <p className="text-xs text-slate-500 truncate">{c.lastMessage || "No messages"}</p>
                   <div className="flex items-center gap-1.5 mt-1">
                     <Badge variant={stateBadgeVariant(c.state)} className="text-[10px] px-1.5 py-0">
-                      {stateLabel(c.state)}
+                      {c.state?.replace(/_/g, " ") || "—"}
                     </Badge>
                     <span className="text-[10px] text-slate-400">{c.messageCount} msgs</span>
                   </div>
@@ -108,7 +210,7 @@ export default function Conversations() {
           </div>
         </Card>
 
-        {/* Right — chat */}
+        {/* ── Right panel — chat ── */}
         <Card className="flex-1 flex flex-col overflow-hidden min-w-0">
           {!selected ? (
             <div className="flex-1 flex items-center justify-center">
@@ -132,11 +234,12 @@ export default function Conversations() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <Badge variant={stateBadgeVariant(selected.state)}>{stateLabel(selected.state)}</Badge>
+                  <Badge variant={stateBadgeVariant(selected.state)}>
+                    {selected.state?.replace(/_/g, " ") || "—"}
+                  </Badge>
                   <button
-                    onClick={() => { if (confirm("Delete this conversation? This cannot be undone.")) deleteMutation.mutate(selected.userId); }}
+                    onClick={() => { if (confirm("Delete this conversation?")) deleteMutation.mutate(selected.userId); }}
                     className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Delete conversation"
                   >
                     <Trash2 size={15} />
                   </button>
@@ -147,9 +250,9 @@ export default function Conversations() {
               {(selected.propertyInterest || selected.email || selected.budget) && (
                 <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-100 flex flex-wrap gap-4 text-xs text-slate-500 shrink-0">
                   {selected.propertyInterest && <span>🏠 <strong className="text-slate-700">{selected.propertyInterest}</strong></span>}
-                  {selected.budget          && <span>💰 Budget: <strong className="text-slate-700">{selected.budget}</strong></span>}
+                  {selected.budget          && <span>💰 <strong className="text-slate-700">{selected.budget}</strong></span>}
                   {selected.email           && <span>📧 <strong className="text-slate-700">{selected.email}</strong></span>}
-                  {selected.consentGiven    && <span className="text-emerald-600">✓ GDPR consent given</span>}
+                  {selected.consentGiven    && <span className="text-emerald-600 font-medium">✓ GDPR consent given</span>}
                 </div>
               )}
 
@@ -158,12 +261,12 @@ export default function Conversations() {
                 {convoLoading ? (
                   <p className="text-center text-slate-400 text-sm py-10">Loading messages…</p>
                 ) : !convo?.history?.length ? (
-                  <p className="text-center text-slate-400 text-sm py-10">No messages in this conversation yet</p>
+                  <p className="text-center text-slate-400 text-sm py-10">No messages in this conversation</p>
                 ) : convo.history.map((m, i) => (
                   <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                     <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
                       m.role === "user"
-                        ? "bg-brand-600 text-white rounded-br-sm"
+                        ? "bg-navy-900 text-white rounded-br-sm"
                         : "bg-white text-slate-800 border border-slate-200 rounded-bl-sm shadow-card"
                     }`}>
                       {m.content}
