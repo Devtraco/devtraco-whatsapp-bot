@@ -1052,16 +1052,10 @@ export async function handleIncomingMessage(messagePayload) {
  * Full AI response with structured data
  */
 async function generateAIResponseFull(from, session, imageData = null) {
-  // Determine category from user's product intent
-  let category = null;
-  const productIntent = session.metadata?.productIntent;
-  if (productIntent === "buying_home") {
-    category = "residential";
-  } else if (productIntent === "land_investment") {
-    category = "land_investment";
-  } else if (productIntent === "catalogue") {
-    category = "all_catalogue";
-  }
+  // Always pass null (all properties) — never filter the AI's property knowledge
+  // by product intent. Filtering caused the AI to forget residential properties
+  // after a user browsed land, and vice versa. The AI handles context internally.
+  const category = null;
 
   // If user declined to share name, address them as Sir/Madam in AI context
   const effectiveLeadData = (session.metadata?.useSirMadam && !session.leadData?.name)
