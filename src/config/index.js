@@ -83,7 +83,7 @@ const config = {
     website: "https://devtracoplus.com",
     phone: "+233270000004",           // Office contact
     escalationWhatsApp: "+233508654407", // Escalation WhatsApp (residential)
-    landSalesWhatsApp:  "+233592405403", // Land sales agent WhatsApp
+    landSalesWhatsApp:  "+233537675961", // Land sales agent WhatsApp
     cellPhone: "+233270000004",
     email: "info@devtracoplus.com",
     address: "No. 8B, Sir Arku Korsah Road, Airport Residential Area, Accra, Ghana",
