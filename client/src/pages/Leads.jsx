@@ -5,9 +5,9 @@ import { api } from "@/lib/api";
 import { fmtRelative, fmtDateTime, fmtPhone, truncate, avatarColor, initials } from "@/lib/utils";
 import { Badge, Button, Card, CardHeader, PageLoader, Empty, ScoreBar, Modal } from "@/components/ui";
 
-const TIER_LABELS = { all: "All Leads", hot: "🔥 Hot", warm: "🌡 Warm", cold: "❄️ Cold" };
-
-const TIER_VARIANT = { hot: "red", warm: "amber", cold: "blue" };
+// API returns uppercase HOT / WARM / COLD — match exactly
+const TIER_LABELS  = { all: "All Leads", HOT: "🔥 Hot", WARM: "🌡 Warm", COLD: "❄️ Cold" };
+const TIER_VARIANT = { HOT: "red", WARM: "amber", COLD: "blue" };
 
 function stateBadgeVariant(state) {
   if (!state) return "slate";
@@ -57,7 +57,7 @@ export default function Leads() {
   const leads = data?.leads || [];
 
   const filtered = leads
-    .filter((l) => tier === "all" || l.tier === tier)
+    .filter((l) => tier === "all" || l.tier?.toUpperCase() === tier)
     .filter((l) => {
       if (!search) return true;
       const q = search.toLowerCase();
@@ -142,7 +142,7 @@ export default function Leads() {
               </button>
             )}
           </div>
-          <div className="flex gap-1">
+          <div className="flex gap-1 flex-wrap">
             {Object.entries(TIER_LABELS).map(([t, label]) => (
               <button key={t} onClick={() => setTier(t)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
@@ -190,7 +190,7 @@ export default function Leads() {
                   </td>
                   <td className="px-4 py-3 w-36"><ScoreBar score={l.score} /></td>
                   <td className="px-4 py-3">
-                    <Badge variant={TIER_VARIANT[l.tier] || "default"}>{l.tier?.toUpperCase() || "—"}</Badge>
+                    <Badge variant={TIER_VARIANT[l.tier?.toUpperCase()] || "default"}>{l.tier || "—"}</Badge>
                   </td>
                   <td className="px-4 py-3">
                     <Badge variant={stateBadgeVariant(l.state)}>{stateLabel(l.state)}</Badge>
@@ -221,7 +221,7 @@ export default function Leads() {
                   <h3 className="text-xl font-bold text-white truncate">{selected.name || "Unknown"}</h3>
                   <p className="text-white/60 text-sm">{fmtPhone(selected.userId)}</p>
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    <Badge variant={TIER_VARIANT[selected.tier]} className="text-xs">{selected.tier?.toUpperCase()} · Score {selected.score}</Badge>
+                    <Badge variant={TIER_VARIANT[selected.tier?.toUpperCase()] || "default"} className="text-xs">{selected.tier} · Score {selected.score}</Badge>
                     <Badge className="bg-white/15 text-white/90 border-0 text-xs">{stateLabel(selected.state)}</Badge>
                   </div>
                 </div>

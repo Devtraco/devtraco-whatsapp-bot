@@ -4,21 +4,26 @@ import { getAllProperties, getPropertiesByCategory } from "../data/properties.js
 
 const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
-// Cache the system prompt to avoid DB queries on every message
-let cachedPrompt = null;
-let promptCacheTime = 0;
+// Cache the system prompt to avoid DB queries on every message.
+// Keyed by "all" or specific category so a land-filtered prompt never
+// overwrites the full prompt used by the main conversation pipeline.
+const promptCache = new Map(); // key -> { prompt, time }
 const PROMPT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 /**
- * Build the system prompt dynamically, with caching.
+ * Build the system prompt dynamically, with per-category caching.
+ * The main conversation always uses category=null (all properties).
  */
 async function buildSystemPrompt(category = null) {
+  const cacheKey = category || "all";
   const now = Date.now();
-  if (cachedPrompt && (now - promptCacheTime) < PROMPT_CACHE_TTL) {
-    return cachedPrompt;
+  const cached = promptCache.get(cacheKey);
+  if (cached && (now - cached.time) < PROMPT_CACHE_TTL) {
+    return cached.prompt;
   }
 
-  // Get properties filtered by category if specified
+  // Always load ALL properties for the main prompt (category=null).
+  // Filtered prompts are only used for narrow admin/reporting contexts.
   const properties = category ? await getPropertiesByCategory(category) : await getAllProperties();
   const propertyIds = properties.map((p) => p.propertyId || p.id).join(", ");
 
@@ -188,17 +193,15 @@ ESCALATION: [ESCALATE]reason[/ESCALATE]
 
 FORMAT: Under 220 words. Short paragraphs. Conversational and warm. One topic per message.`;
 
-  cachedPrompt = prompt;
-  promptCacheTime = now;
-  return cachedPrompt;
+  promptCache.set(cacheKey, { prompt, time: now });
+  return prompt;
 }
 
 /**
  * Invalidate the cached system prompt (call after property CRUD).
  */
 export function invalidatePromptCache() {
-  cachedPrompt = null;
-  promptCacheTime = 0;
+  promptCache.clear();
 }
 
 /**
