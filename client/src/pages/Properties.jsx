@@ -116,18 +116,39 @@ function PropertyForm({ initial, editId, onSave, onCancel, loading, error }) {
   );
 }
 
-function MediaManager({ propertyId, name, onClose }) {
+function MediaManager({ property, onClose }) {
   const qc = useQueryClient();
-  const { data: imgData, isLoading } = useQuery({ queryKey: ["propImages", propertyId], queryFn: () => api.propertyImages(propertyId) });
+  const propertyId = property.propertyId || property.id;
   const [uploading, setUploading] = useState(false);
   const [error, setError]         = useState("");
+  const [busyUrl, setBusyUrl]     = useState(null);
 
-  async function deleteImg(id) {
+  // The property's images array is the source of truth for what the bot sends —
+  // it holds BOTH uploaded images (/api/images/<id>) and external web URLs.
+  const images = property.images || [];
+
+  function refresh() { qc.invalidateQueries({ queryKey: ["properties"] }); }
+
+  async function deleteImg(url) {
+    if (!confirm("Remove this image?")) return;
+    setBusyUrl(url);
+    setError("");
     try {
-      await api.deleteImage(id);
-      qc.invalidateQueries({ queryKey: ["propImages", propertyId] });
-      qc.invalidateQueries({ queryKey: ["properties"] });
-    } catch (e) { alert("Failed to delete: " + e.message); }
+      const marker = "/api/images/";
+      if (url.includes(marker)) {
+        // Uploaded image — delete the stored file (server preserves external URLs)
+        const imageId = url.split(marker)[1].split(/[?#]/)[0];
+        await api.deleteImage(imageId);
+      } else {
+        // External/web URL — just drop it from the property's images array
+        await api.updateProperty(propertyId, { images: images.filter((u) => u !== url) });
+      }
+      await refresh();
+    } catch (e) {
+      setError("Failed to remove: " + e.message);
+    } finally {
+      setBusyUrl(null);
+    }
   }
 
   async function handleUpload(e) {
@@ -138,8 +159,7 @@ function MediaManager({ propertyId, name, onClose }) {
     setUploading(true);
     try {
       await api.uploadImages(propertyId, files);
-      await qc.invalidateQueries({ queryKey: ["propImages", propertyId] });
-      qc.invalidateQueries({ queryKey: ["properties"] });
+      await refresh();
     } catch (err) {
       setError(err.message || "Upload failed");
     } finally {
@@ -147,50 +167,45 @@ function MediaManager({ propertyId, name, onClose }) {
     }
   }
 
-  const images = imgData?.images || [];
-
   return (
-    <Modal open onClose={onClose} title={`Media — ${name}`} width="max-w-xl">
+    <Modal open onClose={onClose} title={`Media — ${property.name}`} width="max-w-xl">
       <div className="p-6 space-y-4">
         <ErrorBanner message={error} />
 
         {/* Upload area */}
-        <div>
-          <div
-            className={cn(
-              "border-2 border-dashed rounded-xl p-5 text-center transition-all",
-              uploading ? "opacity-60 pointer-events-none border-slate-200" : "cursor-pointer border-slate-200 hover:border-brand-400 hover:bg-brand-50/30"
-            )}
-            onClick={() => !uploading && document.getElementById("mm-img-input").click()}
-          >
-            {uploading
-              ? <Loader2 size={20} className="mx-auto text-brand-500 mb-2 animate-spin" />
-              : <Upload size={20} className="mx-auto text-slate-400 mb-2" />}
-            <p className="text-sm text-slate-500">
-              {uploading ? "Uploading…" : "Click to upload images (max 5 · up to 5 MB each)"}
-            </p>
-            <input id="mm-img-input" type="file" accept="image/*" multiple className="hidden"
-              disabled={uploading} onChange={handleUpload} />
-          </div>
+        <div
+          className={cn(
+            "border-2 border-dashed rounded-xl p-5 text-center transition-all",
+            uploading ? "opacity-60 pointer-events-none border-slate-200" : "cursor-pointer border-slate-200 hover:border-brand-400 hover:bg-brand-50/30"
+          )}
+          onClick={() => !uploading && document.getElementById("mm-img-input").click()}
+        >
+          {uploading
+            ? <Loader2 size={20} className="mx-auto text-brand-500 mb-2 animate-spin" />
+            : <Upload size={20} className="mx-auto text-slate-400 mb-2" />}
+          <p className="text-sm text-slate-500">
+            {uploading ? "Uploading…" : "Click to upload images (max 5 · up to 5 MB each)"}
+          </p>
+          <input id="mm-img-input" type="file" accept="image/*" multiple className="hidden"
+            disabled={uploading} onChange={handleUpload} />
         </div>
 
-        {/* Existing images */}
+        {/* All images */}
         <div>
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
             Images {images.length > 0 && `(${images.length})`}
           </p>
-          {isLoading ? (
-            <p className="text-sm text-slate-400 text-center py-8">Loading…</p>
-          ) : !images.length ? (
-            <p className="text-sm text-slate-400 text-center py-8">No images uploaded yet</p>
+          {!images.length ? (
+            <p className="text-sm text-slate-400 text-center py-8">No images yet — upload some above</p>
           ) : (
             <div className="grid grid-cols-3 gap-3">
-              {images.map((img) => (
-                <div key={img.imageId} className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-video">
-                  <img src={img.url} className="w-full h-full object-cover" alt="" />
-                  <button onClick={() => deleteImg(img.imageId)}
-                    className="absolute top-1.5 right-1.5 w-6 h-6 bg-red-600 text-white rounded-full items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity flex">
-                    <X size={11} />
+              {images.map((url) => (
+                <div key={url} className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-video">
+                  <img src={url} className="w-full h-full object-cover" alt=""
+                    onError={(e) => { e.currentTarget.style.opacity = "0.15"; }} />
+                  <button onClick={() => deleteImg(url)} disabled={busyUrl === url}
+                    className="absolute top-1.5 right-1.5 w-6 h-6 bg-red-600 text-white rounded-full items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity flex disabled:opacity-100">
+                    {busyUrl === url ? <Loader2 size={11} className="animate-spin" /> : <X size={11} />}
                   </button>
                 </div>
               ))}
@@ -411,7 +426,7 @@ export default function Properties() {
 
       {/* Media manager */}
       {mediaId && mediaProperty && (
-        <MediaManager propertyId={mediaId} name={mediaProperty.name} onClose={() => setMediaId(null)} />
+        <MediaManager property={mediaProperty} onClose={() => setMediaId(null)} />
       )}
     </div>
   );

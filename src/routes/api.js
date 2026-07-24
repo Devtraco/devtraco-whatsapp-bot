@@ -491,11 +491,14 @@ router.post("/properties/:id/images", upload.array("images", 5), async (req, res
       });
     }
 
-    // Update property's images array with the serve URLs
+    // Update property's images array with the serve URLs.
+    // Preserve any existing external (web) image URLs so uploading doesn't wipe them.
+    const existingExternal = (property.images || []).filter((u) => !u.includes("/api/images/"));
     const allImages = await Image.find({ propertyId }).sort({ order: 1 }).select("imageId");
-    const imageUrls = allImages.map((img) => `/api/images/${img.imageId}`);
+    const uploadedUrls = allImages.map((img) => `/api/images/${img.imageId}`);
+    const imageUrls = [...existingExternal, ...uploadedUrls];
     const updated = await updateProperty(propertyId, { images: imageUrls });
-    console.log(`[API] Updated property ${propertyId} images: ${imageUrls.length} URLs, saved=${!!updated}`);
+    console.log(`[API] Updated property ${propertyId} images: ${imageUrls.length} URLs (${existingExternal.length} external + ${uploadedUrls.length} uploaded), saved=${!!updated}`);
 
     res.status(201).json({ uploaded: savedImages.length, images: savedImages });
   } catch (err) {
@@ -556,9 +559,11 @@ router.delete("/images/:imageId", async (req, res) => {
     if (!image) {
       return res.status(404).json({ error: "Image not found" });
     }
-    // Update property's images array
+    // Update property's images array — preserve external (web) URLs
+    const prop = await getPropertyById(image.propertyId);
+    const existingExternal = (prop?.images || []).filter((u) => !u.includes("/api/images/"));
     const remaining = await Image.find({ propertyId: image.propertyId }).sort({ order: 1 }).select("imageId");
-    const imageUrls = remaining.map((img) => `/api/images/${img.imageId}`);
+    const imageUrls = [...existingExternal, ...remaining.map((img) => `/api/images/${img.imageId}`)];
     await updateProperty(image.propertyId, { images: imageUrls });
 
     res.json({ success: true, message: "Image deleted" });

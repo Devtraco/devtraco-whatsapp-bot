@@ -88,6 +88,13 @@ export function authMiddleware(req, res, next) {
   // Allow health check without auth (for uptime monitors / keep-alive)
   if (req.path === "/health") return next();
 
+  // Allow public GET access to served media (images/videos).
+  // WhatsApp must fetch these by URL to deliver them, and browser <img>/<video>
+  // tags on the dashboard can't send the Bearer token. Upload/delete stay protected.
+  if (req.method === "GET" && (/^\/images\//.test(req.path) || /^\/videos\//.test(req.path))) {
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Authentication required" });
