@@ -6,6 +6,33 @@ import { api } from "@/lib/api";
 import { fmtRelative, fmtPhone, truncate, avatarColor, initials } from "@/lib/utils";
 import { Badge, Card, PageLoader, Empty } from "@/components/ui";
 
+const URL_RE = /(https?:\/\/[^\s]+)/g;
+
+// Render message text with clickable links (property cards include a "🔗 Learn more" URL)
+function MessageText({ text, dark }) {
+  if (!text) return null;
+  const parts = String(text).split(URL_RE);
+  return (
+    <span className="whitespace-pre-wrap break-words">
+      {parts.map((part, i) =>
+        /^https?:\/\//.test(part) ? (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`underline break-all ${dark ? "text-brand-200" : "text-brand-600"}`}
+          >
+            {part}
+          </a>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </span>
+  );
+}
+
 function stateBadgeVariant(state) {
   if (!state) return "slate";
   if (state.includes("ESCALATED")) return "red";
@@ -264,12 +291,23 @@ export default function Conversations() {
                   <p className="text-center text-slate-400 text-sm py-10">No messages in this conversation</p>
                 ) : convo.history.map((m, i) => (
                   <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                    <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed space-y-2 ${
                       m.role === "user"
                         ? "bg-navy-900 text-white rounded-br-sm"
                         : "bg-white text-slate-800 border border-slate-200 rounded-bl-sm shadow-card"
                     }`}>
-                      {m.content}
+                      {m.content && <MessageText text={m.content} dark={m.role === "user"} />}
+                      {m.mediaUrl && (
+                        <a href={m.mediaUrl} target="_blank" rel="noopener noreferrer" className="block">
+                          <img
+                            src={m.mediaUrl}
+                            alt={m.content || "attachment"}
+                            loading="lazy"
+                            className="rounded-lg max-h-56 w-auto object-cover border border-black/10"
+                            onError={(e) => { e.currentTarget.style.display = "none"; }}
+                          />
+                        </a>
+                      )}
                     </div>
                   </div>
                 ))}

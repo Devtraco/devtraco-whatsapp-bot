@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, ImageIcon, ExternalLink, Grid3X3, List, X, Check, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, ImageIcon, ExternalLink, Grid3X3, List, X, Check, Upload, Building2, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { fmtCurrency, cn } from "@/lib/utils";
 import { Badge, Button, Card, CardHeader, CardBody, Modal, Input, Select, Textarea, PageLoader, Empty, ErrorBanner } from "@/components/ui";
@@ -118,32 +118,85 @@ function PropertyForm({ initial, editId, onSave, onCancel, loading, error }) {
 
 function MediaManager({ propertyId, name, onClose }) {
   const qc = useQueryClient();
-  const { data: imgData } = useQuery({ queryKey: ["propImages", propertyId], queryFn: () => api.propertyImages(propertyId) });
+  const { data: imgData, isLoading } = useQuery({ queryKey: ["propImages", propertyId], queryFn: () => api.propertyImages(propertyId) });
+  const [uploading, setUploading] = useState(false);
+  const [error, setError]         = useState("");
 
   async function deleteImg(id) {
-    try { await api.deleteImage(id); qc.invalidateQueries({ queryKey: ["propImages", propertyId] }); }
-    catch (e) { alert("Failed to delete: " + e.message); }
+    try {
+      await api.deleteImage(id);
+      qc.invalidateQueries({ queryKey: ["propImages", propertyId] });
+      qc.invalidateQueries({ queryKey: ["properties"] });
+    } catch (e) { alert("Failed to delete: " + e.message); }
   }
+
+  async function handleUpload(e) {
+    const files = Array.from(e.target.files || []).slice(0, 5);
+    e.target.value = ""; // allow re-selecting the same file
+    if (!files.length) return;
+    setError("");
+    setUploading(true);
+    try {
+      await api.uploadImages(propertyId, files);
+      await qc.invalidateQueries({ queryKey: ["propImages", propertyId] });
+      qc.invalidateQueries({ queryKey: ["properties"] });
+    } catch (err) {
+      setError(err.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const images = imgData?.images || [];
 
   return (
     <Modal open onClose={onClose} title={`Media — ${name}`} width="max-w-xl">
-      <div className="p-6">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Images</p>
-        {!imgData?.images?.length ? (
-          <p className="text-sm text-slate-400 text-center py-8">No images uploaded yet</p>
-        ) : (
-          <div className="grid grid-cols-3 gap-3">
-            {imgData.images.map((img) => (
-              <div key={img.imageId} className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-video">
-                <img src={img.url} className="w-full h-full object-cover" alt="" />
-                <button onClick={() => deleteImg(img.imageId)}
-                  className="absolute top-1.5 right-1.5 w-6 h-6 bg-red-600 text-white rounded-full items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity flex">
-                  <X size={11} />
-                </button>
-              </div>
-            ))}
+      <div className="p-6 space-y-4">
+        <ErrorBanner message={error} />
+
+        {/* Upload area */}
+        <div>
+          <div
+            className={cn(
+              "border-2 border-dashed rounded-xl p-5 text-center transition-all",
+              uploading ? "opacity-60 pointer-events-none border-slate-200" : "cursor-pointer border-slate-200 hover:border-brand-400 hover:bg-brand-50/30"
+            )}
+            onClick={() => !uploading && document.getElementById("mm-img-input").click()}
+          >
+            {uploading
+              ? <Loader2 size={20} className="mx-auto text-brand-500 mb-2 animate-spin" />
+              : <Upload size={20} className="mx-auto text-slate-400 mb-2" />}
+            <p className="text-sm text-slate-500">
+              {uploading ? "Uploading…" : "Click to upload images (max 5 · up to 5 MB each)"}
+            </p>
+            <input id="mm-img-input" type="file" accept="image/*" multiple className="hidden"
+              disabled={uploading} onChange={handleUpload} />
           </div>
-        )}
+        </div>
+
+        {/* Existing images */}
+        <div>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+            Images {images.length > 0 && `(${images.length})`}
+          </p>
+          {isLoading ? (
+            <p className="text-sm text-slate-400 text-center py-8">Loading…</p>
+          ) : !images.length ? (
+            <p className="text-sm text-slate-400 text-center py-8">No images uploaded yet</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-3">
+              {images.map((img) => (
+                <div key={img.imageId} className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-video">
+                  <img src={img.url} className="w-full h-full object-cover" alt="" />
+                  <button onClick={() => deleteImg(img.imageId)}
+                    className="absolute top-1.5 right-1.5 w-6 h-6 bg-red-600 text-white rounded-full items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity flex">
+                    <X size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </Modal>
   );
@@ -179,7 +232,14 @@ export default function Properties() {
   const properties = data?.properties || [];
   const mediaProperty = properties.find((p) => (p.propertyId || p.id) === mediaId);
 
-  function openEdit(p) { setFormState(p); setFormError(""); }
+  function openEdit(p) {
+    setFormState(p);
+    setFormError("");
+    // Scroll the edit form into view so the user can start editing immediately
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+    }
+  }
 
   function handleSave(body, images, editId) {
     saveMutation.mutate({ body, images, editId });

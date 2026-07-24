@@ -170,7 +170,7 @@ export async function handleIncomingMessage(messagePayload) {
     return;
   }
 
-  const speakToAgentCmd = /^(?:\/agent|speak(?:\s+to)?\s+(?:an?\s+)?(?:agent|human|person|someone|staff|consultant|team\s+member)|human\s+(?:agent|please|help|support)|talk\s+to\s+(?:an?\s+)?(?:agent|human|person|someone|consultant|team\s+member)|connect\s+(?:me\s+)?to\s+(?:an?\s+)?(?:agent|human|person|someone|consultant)|can\s+i\s+(?:speak|talk|chat|get)\s+(?:to|with)\s+(?:an?\s+)?(?:agent|human|person|someone|consultant|representative)|i\s+(?:want|need|would\s+like)\s+(?:to\s+(?:speak|talk|chat|connect)\s+(?:to|with)\s+)?(?:an?\s+)?(?:agent|human|person|real\s+person|consultant|staff|someone)|get\s+(?:a\s+)?(?:human|real\s+person|agent|consultant)|please\s+(?:connect|transfer)\s+me|(?:transfer|escalate)\s+(?:me\s+)?to\s+(?:an?\s+)?agent|real\s+(?:agent|person|human)|i\s+need\s+help\s+from\s+(?:a\s+)?(?:human|person|agent|real))$/i;
+  const speakToAgentCmd = /^(?:\/agent|speak(?:\s+to)?\s+(?:an?\s+)?(?:agent|human|person|someone|staff|consultant|team\s+member)|human\s+(?:agent|please|help|support)|talk\s+to\s+(?:an?\s+)?(?:agent|human|person|someone|consultant|team\s+member)|connect\s+(?:me\s+)?(?:to|with)\s+(?:an?\s+)?(?:agent|human|person|real\s+person|someone|consultant|staff|representative|team\s+member)|can\s+i\s+(?:speak|talk|chat|get)\s+(?:to|with)\s+(?:an?\s+)?(?:agent|human|person|someone|consultant|representative)|i\s+(?:want|need|would\s+like)\s+(?:to\s+(?:speak|talk|chat|connect)\s+(?:to|with)\s+)?(?:an?\s+)?(?:agent|human|person|real\s+person|consultant|staff|someone)|get\s+(?:a\s+)?(?:human|real\s+person|agent|consultant)|please\s+(?:connect|transfer)\s+me|(?:transfer|escalate)\s+(?:me\s+)?to\s+(?:an?\s+)?agent|real\s+(?:agent|person|human)|i\s+need\s+help\s+from\s+(?:a\s+)?(?:human|person|agent|real))$/i;
   if (speakToAgentCmd.test(command)) {
     await handleEscalation(from, "Customer requested human agent");
     return;
@@ -286,6 +286,7 @@ export async function handleIncomingMessage(messagePayload) {
       // 1. Send property card (emoji-formatted details)
       const card = formatPropertyCard(property);
       await sendTextMessage(from, card);
+      await addMessage(from, "assistant", card);
 
       // 2. Send ALL images
       await sendPropertyImages(from, propertyId);
@@ -673,18 +674,8 @@ export async function handleIncomingMessage(messagePayload) {
       await addMessage(from, "user", userText);
       await updateLeadData(from, {});
       await updateState(from, "AWAITING_PRODUCT_INTENT");
-      await sendTextMessage(from, `No problem at all! 😊\n\nWhat are you interested in?`);
-      await sendButtonMessage(
-        from,
-        "Choose one of the options below:",
-        [
-          { id: "product_buying_home", title: "🏠 Buy Home" },
-          { id: "product_land_investment", title: "📍 Land Investment" },
-          { id: "product_catalogue", title: "📄 Catalogue" },
-        ],
-        "Product Selection",
-        "Devtraco Plus"
-      );
+      await sendTextMessage(from, `No problem at all! 😊`);
+      await sendProductIntentPrompt(from, session);
       return;
     }
 
@@ -703,18 +694,7 @@ export async function handleIncomingMessage(messagePayload) {
     delete session.metadata.inWelcomeFlow;
     await updateLeadData(from, {});
 
-    await sendTextMessage(from, `What are you interested in?`);
-    await sendButtonMessage(
-      from,
-      "Choose one of the options below:",
-      [
-        { id: "product_buying_home", title: "🏠 Buy Home" },
-        { id: "product_land_investment", title: "📍 Land Investment" },
-        { id: "product_catalogue", title: "📄 Catalogue" },
-      ],
-      "Product Selection",
-      "Devtraco Plus"
-    );
+    await sendProductIntentPrompt(from, session);
     return;
   }
 
@@ -981,6 +961,7 @@ export async function handleIncomingMessage(messagePayload) {
     if (showProp) {
       const card = formatPropertyCard(showProp);
       await sendTextMessage(from, card);
+      await addMessage(from, "assistant", card);
     }
   }
 
@@ -1341,6 +1322,8 @@ async function sendPropertyImages(to, propertyId) {
           : `${property.name} (${i + 1}/${property.images.length})`;
         console.log(`[Property] Sending image ${i + 1}/${property.images.length} for ${propertyId}`);
         await sendImageMessage(to, imageUrl, caption);
+        // Record in conversation history so the dashboard shows the image
+        await addMessage(to, "assistant", `📷 ${caption}`, img);
       });
     });
   } else {
@@ -1356,6 +1339,8 @@ async function sendPropertyImages(to, propertyId) {
         const caption = `${property.name} — Video ${i + 1}/${property.videos.length}`;
         console.log(`[Property] Sending video ${i + 1}/${property.videos.length} for ${propertyId}`);
         await sendVideoMessage(to, videoUrl, caption);
+        // Record in conversation history so the dashboard shows the video
+        await addMessage(to, "assistant", `🎬 ${caption}`, vid);
       });
     });
   }
@@ -1379,6 +1364,7 @@ async function sendPropertyDetail(to, propertyId) {
   // 1. Send property card text first
   const card = formatPropertyCard(property);
   await sendTextMessage(to, card);
+  await addMessage(to, "assistant", card);
 
   // 2. Send ALL images
   await sendPropertyImages(to, propertyId);
@@ -1631,6 +1617,48 @@ async function sendUserViewings(to) {
   );
 
   await sendTextMessage(to, `📅 *Your Scheduled Viewings*\n\n${lines.join("\n\n")}`);
+}
+
+/**
+ * Present the product-intent menu after onboarding.
+ *
+ * If the user opened the conversation with a substantive enquiry (stored as
+ * metadata.pendingIntent during the first message), let the AI actually READ
+ * and answer it now — instead of silently dropping it and only showing the
+ * generic welcome/menu. This makes the bot feel like it's listening.
+ */
+async function sendProductIntentPrompt(to, session) {
+  const pendingIntent = session?.metadata?.pendingIntent;
+  if (pendingIntent && String(pendingIntent).trim().length > 10) {
+    delete session.metadata.pendingIntent;
+    await updateLeadData(to, {}); // persist removal
+    try {
+      // Re-surface the original enquiry as the latest turn so the AI answers IT
+      await addMessage(to, "user", pendingIntent);
+      const aiResult = await generateAIResponseFull(to, session);
+      if (aiResult.leadData) await captureLead(to, aiResult.leadData);
+      if (aiResult.text) await sendTextMessage(to, cleanImageRefusals(aiResult.text));
+      if (aiResult.escalate) {
+        await handleEscalation(to, aiResult.escalate);
+        return; // handed to a human — skip the product menu
+      }
+    } catch (err) {
+      console.error("[PendingIntent] Failed to process opening enquiry:", err.message);
+    }
+  }
+
+  await sendTextMessage(to, `What are you interested in?`);
+  await sendButtonMessage(
+    to,
+    "Choose one of the options below:",
+    [
+      { id: "product_buying_home", title: "🏠 Buy Home" },
+      { id: "product_land_investment", title: "📍 Land Investment" },
+      { id: "product_catalogue", title: "📄 Catalogue" },
+    ],
+    "Product Selection",
+    "Devtraco Plus"
+  );
 }
 
 /**
