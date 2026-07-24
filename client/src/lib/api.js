@@ -48,6 +48,9 @@ export const api = {
   leads: () => request("/leads"),
   lead:  (id) => request(`/leads/${id}`),
 
+  // Escalations
+  escalations: () => request("/escalations"),
+
   // Conversations
   conversations:       () => request("/conversations"),
   conversation:        (id) => request(`/conversations/${id}`),

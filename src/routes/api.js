@@ -142,6 +142,36 @@ router.get("/leads/:userId", async (req, res) => {
 });
 
 /**
+ * GET /api/escalations — List all conversations escalated to a human agent.
+ * Includes every ESCALATED session regardless of lead score (so agent requests
+ * from brand-new contacts show up too).
+ */
+router.get("/escalations", async (req, res) => {
+  const sessions = await getAllSessions();
+  const escalations = sessions
+    .filter((s) => s.state === "ESCALATED")
+    .map((s) => ({
+      userId: s.userId,
+      name: s.leadData?.name || null,
+      email: s.leadData?.email || null,
+      country: s.leadData?.country || null,
+      budget: s.leadData?.budget || null,
+      propertyInterest: s.leadData?.propertyInterest || null,
+      score: s.leadScore,
+      tier: getLeadTier(s.leadScore),
+      state: s.state,
+      escalationStatus: s.metadata?.escalation?.status || "awaiting_agent",
+      escalationReason: s.metadata?.escalation?.reason || null,
+      escalatedAt: s.metadata?.escalation?.timestamp || null,
+      lastActivity: s.lastActivity,
+      lastMessage: s.history?.length > 0 ? s.history[s.history.length - 1].content?.substring(0, 80) : null,
+    }))
+    .sort((a, b) => (a.lastActivity || 0) - (b.lastActivity || 0));
+
+  res.json({ count: escalations.length, escalations });
+});
+
+/**
  * DELETE /api/conversations — Delete ALL conversations/sessions
  */
 router.delete("/conversations", async (req, res) => {
@@ -761,19 +791,38 @@ router.get("/broadcast/leads-audience", async (req, res) => {
 });
 
 /**
- * POST /api/broadcast/send-leads — Send a broadcast to all captured lead contacts.
- * Body: { message, title?, tier? }  (message supports {name} / {first_name} placeholders)
+ * POST /api/broadcast/send-leads — Send a broadcast to captured lead contacts.
+ * Body: { message, title?, tier?, phones? }
+ *   - tier   : optional audience filter (hot|warm|cold) — sends to all matching leads
+ *   - phones : optional array of specific phone numbers to send to (overrides tier).
+ *              Names are pulled from captured leads when available for {name} personalisation.
+ *   message supports {name} / {first_name} placeholders.
  */
 router.post("/broadcast/send-leads", async (req, res) => {
   try {
-    const { message, title, tier } = req.body || {};
+    const { message, title, tier, phones } = req.body || {};
     if (!message || typeof message !== "string" || message.trim().length === 0) {
       return res.status(400).json({ error: "Provide a non-empty message" });
     }
 
-    const recipients = await getLeadRecipients(tier);
+    let recipients;
+    if (Array.isArray(phones) && phones.length > 0) {
+      // Specific contacts — look up names from captured leads for personalisation
+      const leadMap = new Map((await getLeadRecipients()).map((r) => [r.phone, r.name]));
+      const seen = new Set();
+      recipients = [];
+      for (const p of phones) {
+        const phone = normalizePhone(p);
+        if (!phone || seen.has(phone)) continue;
+        seen.add(phone);
+        recipients.push({ phone, name: leadMap.get(phone) || "" });
+      }
+    } else {
+      recipients = await getLeadRecipients(tier);
+    }
+
     if (recipients.length === 0) {
-      return res.status(400).json({ error: "No captured leads to send to" });
+      return res.status(400).json({ error: "No valid recipients to send to" });
     }
 
     console.log(`[API] Broadcasting to ${recipients.length} captured leads${tier ? ` (tier: ${tier})` : ""}`);
@@ -802,6 +851,15 @@ router.post("/broadcast/send-leads", async (req, res) => {
 });
 
 /**
+ * Normalise a raw phone/WhatsApp id to "+<international digits>", or null if invalid.
+ */
+function normalizePhone(raw) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (digits.length < 8) return null; // clearly invalid
+  return `+${digits}`;
+}
+
+/**
  * Build the list of broadcast recipients from captured leads.
  * Each recipient is { phone: "+<international>", name }.
  */
@@ -814,14 +872,10 @@ async function getLeadRecipients(tier = null) {
   for (const s of sessions) {
     // A "lead" is any contact we've captured (has some lead score / name)
     if (!(s.leadScore > 0 || s.leadData?.name)) continue;
-    if (wanted && getLeadTier(s.leadScore) !== wanted) continue;
+    if (wanted && getLeadTier(s.leadScore).toLowerCase() !== wanted) continue;
 
-    const raw = s.leadData?.phone || s.userId;
-    if (!raw) continue;
-    const digits = String(raw).replace(/\D/g, "");
-    if (digits.length < 8) continue; // skip clearly-invalid numbers
-    const phone = `+${digits}`;
-    if (seen.has(phone)) continue;
+    const phone = normalizePhone(s.leadData?.phone || s.userId);
+    if (!phone || seen.has(phone)) continue;
     seen.add(phone);
     recipients.push({ phone, name: s.leadData?.name || "" });
   }

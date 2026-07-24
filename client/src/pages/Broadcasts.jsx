@@ -16,18 +16,55 @@ function SendToLeadsModal({ initial, onClose }) {
   const qc = useQueryClient();
   const [title,   setTitle]   = useState(initial?.title || "");
   const [message, setMessage] = useState(initial?.message || "");
+  const [mode,    setMode]    = useState("audience"); // "audience" | "specific"
   const [tier,    setTier]    = useState("all");
+  const [selected, setSelected] = useState(() => new Set()); // Set<phone>
+  const [search,  setSearch]  = useState("");
   const [error,   setError]   = useState("");
   const [result,  setResult]  = useState(null);
 
+  // Count for the current tier (audience mode)
   const { data: audience, isLoading: audLoading } = useQuery({
     queryKey: ["leadsAudience", tier],
     queryFn: () => api.broadcastLeadsAudience(tier === "all" ? "" : tier),
   });
-  const count = audience?.count ?? 0;
+
+  // Full contact list for the picker (specific mode)
+  const { data: allAudience } = useQuery({
+    queryKey: ["leadsAudience", "all"],
+    queryFn: () => api.broadcastLeadsAudience(""),
+  });
+  const contacts = allAudience?.recipients || [];
+  const filteredContacts = contacts.filter((c) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (c.name || "").toLowerCase().includes(q) || c.phone.includes(q);
+  });
+
+  const count = mode === "specific" ? selected.size : (audience?.count ?? 0);
+
+  function toggle(phone) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(phone) ? next.delete(phone) : next.add(phone);
+      return next;
+    });
+  }
+  function toggleAllFiltered() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const allSelected = filteredContacts.every((c) => next.has(c.phone));
+      filteredContacts.forEach((c) => (allSelected ? next.delete(c.phone) : next.add(c.phone)));
+      return next;
+    });
+  }
 
   const sendMutation = useMutation({
-    mutationFn: () => api.sendToLeads({ title, message, tier: tier === "all" ? undefined : tier }),
+    mutationFn: () => api.sendToLeads(
+      mode === "specific"
+        ? { title, message, phones: [...selected] }
+        : { title, message, tier: tier === "all" ? undefined : tier }
+    ),
     onSuccess: (data) => {
       setResult(data);
       qc.invalidateQueries({ queryKey: ["broadcastResults"] });
@@ -38,8 +75,8 @@ function SendToLeadsModal({ initial, onClose }) {
   function submit() {
     setError("");
     if (!message.trim()) { setError("Message is required."); return; }
-    if (count === 0)      { setError("No leads match this audience."); return; }
-    if (!confirm(`Send this message to ${count} lead${count !== 1 ? "s" : ""} on WhatsApp now?`)) return;
+    if (count === 0)      { setError(mode === "specific" ? "Select at least one contact." : "No leads match this audience."); return; }
+    if (!confirm(`Send this message to ${count} contact${count !== 1 ? "s" : ""} on WhatsApp now?`)) return;
     sendMutation.mutate();
   }
 
@@ -74,27 +111,87 @@ function SendToLeadsModal({ initial, onClose }) {
           <>
             <ErrorBanner message={error} />
 
-            {/* Audience */}
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1.5">Audience</label>
-              <div className="flex gap-1.5 flex-wrap">
-                {TIERS.map((t) => (
-                  <button
-                    key={t.key}
-                    onClick={() => setTier(t.key)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                      tier === t.key ? "bg-navy-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-2 flex items-center gap-1.5 text-sm text-slate-500">
-                <Users size={14} />
-                {audLoading ? "Counting recipients…" : <span><strong className="text-slate-800">{count}</strong> lead{count !== 1 ? "s" : ""} will receive this message</span>}
-              </p>
+            {/* Mode toggle */}
+            <div className="flex gap-1.5">
+              {[
+                { key: "audience", label: "By audience" },
+                { key: "specific", label: "Specific contacts" },
+              ].map((m) => (
+                <button
+                  key={m.key}
+                  onClick={() => setMode(m.key)}
+                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    mode === m.key ? "bg-navy-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
             </div>
+
+            {mode === "audience" ? (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">Audience</label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {TIERS.map((t) => (
+                    <button
+                      key={t.key}
+                      onClick={() => setTier(t.key)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                        tier === t.key ? "bg-navy-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 flex items-center gap-1.5 text-sm text-slate-500">
+                  <Users size={14} />
+                  {audLoading ? "Counting recipients…" : <span><strong className="text-slate-800">{count}</strong> lead{count !== 1 ? "s" : ""} will receive this message</span>}
+                </p>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-medium text-slate-600">
+                    Contacts <span className="text-slate-400">({selected.size} selected)</span>
+                  </label>
+                  {filteredContacts.length > 0 && (
+                    <button onClick={toggleAllFiltered} className="text-xs font-medium text-brand-600 hover:text-brand-700">
+                      {filteredContacts.every((c) => selected.has(c.phone)) ? "Clear" : "Select all"}
+                    </button>
+                  )}
+                </div>
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by name or number…"
+                  className="w-full mb-2 px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                />
+                <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                  {contacts.length === 0 ? (
+                    <p className="text-sm text-slate-400 text-center py-6">No captured contacts yet</p>
+                  ) : filteredContacts.length === 0 ? (
+                    <p className="text-sm text-slate-400 text-center py-6">No contacts match your search</p>
+                  ) : (
+                    filteredContacts.map((c) => (
+                      <label key={c.phone} className="flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(c.phone)}
+                          onChange={() => toggle(c.phone)}
+                          className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-800 truncate">{c.name || "Unknown"}</p>
+                          <p className="text-xs text-slate-400">{c.phone}</p>
+                        </div>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
 
             <Input
               label="Campaign Title (optional)"
@@ -116,7 +213,7 @@ function SendToLeadsModal({ initial, onClose }) {
             <div className="flex gap-2 justify-end pt-1">
               <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
               <Button size="sm" icon={Send} loading={sendMutation.isPending} onClick={submit} disabled={count === 0}>
-                Send to {count} lead{count !== 1 ? "s" : ""}
+                Send to {count} contact{count !== 1 ? "s" : ""}
               </Button>
             </div>
           </>

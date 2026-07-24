@@ -64,9 +64,9 @@ export default function Escalations() {
   const [selected, setSelected] = useState(null);
   const [filter,   setFilter]   = useState("all");
 
-  const { data: leadsData, isLoading } = useQuery({
-    queryKey: ["leads"],
-    queryFn: api.leads,
+  const { data: escData, isLoading } = useQuery({
+    queryKey: ["escalations"],
+    queryFn: api.escalations,
     refetchInterval: 30_000,
   });
 
@@ -78,7 +78,7 @@ export default function Escalations() {
 
   if (isLoading) return <PageLoader />;
 
-  const all = (leadsData?.leads || []).filter((l) => l.state?.includes("ESCALATED"));
+  const all = escData?.escalations || [];
   const awaiting  = all.filter((l) => !l.escalationStatus || l.escalationStatus === "awaiting_agent");
   const responded = all.filter((l) => l.escalationStatus === "responded");
 
