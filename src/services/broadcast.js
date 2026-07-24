@@ -6,13 +6,26 @@ const BATCH_SIZE = 20; // Send in batches to respect WhatsApp rate limits
 const DELAY_BETWEEN_BATCHES = 2000; // 2 seconds between batches
 
 /**
- * Send a broadcast message to multiple phone numbers
- * @param {string[]} phoneNumbers - Array of phone numbers (with country code, e.g., "+233123456789")
- * @param {string} message - Message text
+ * Personalise a broadcast message for a single recipient.
+ * Replaces {name} / {first_name} placeholders with the lead's name.
+ */
+export function personalizeMessage(message, name = "") {
+  const clean = (name || "").trim();
+  const first = clean.split(/\s+/)[0] || "there";
+  return String(message)
+    .replace(/\{first[_\s]?name\}/gi, first)
+    .replace(/\{name\}/gi, clean || first);
+}
+
+/**
+ * Send a broadcast message to multiple recipients.
+ * @param {(string|{phone:string,name?:string})[]} recipients - Phone numbers (with country
+ *        code, e.g. "+233123456789") or objects { phone, name } for {name} personalisation.
+ * @param {string} message - Message text (supports {name} / {first_name} placeholders)
  * @param {Object} options - Optional: { templateName, templateLanguage, components, batchSize, delayMs }
  * @returns {Promise} - { totalSent, failed, status }
  */
-export async function broadcastMessage(phoneNumbers, message, options = {}) {
+export async function broadcastMessage(recipients, message, options = {}) {
   const {
     templateName = null,
     templateLanguage = "en_US",
@@ -21,8 +34,13 @@ export async function broadcastMessage(phoneNumbers, message, options = {}) {
     delayMs = DELAY_BETWEEN_BATCHES,
   } = options;
 
+  // Normalise recipients to { phone, name } — accept plain strings too
+  const normalized = (recipients || []).map((r) =>
+    typeof r === "string" ? { phone: r, name: "" } : { phone: r?.phone, name: r?.name || "" }
+  );
+
   const results = {
-    totalRequested: phoneNumbers.length,
+    totalRequested: normalized.length,
     totalSent: 0,
     failed: 0,
     failedNumbers: [],
@@ -32,7 +50,8 @@ export async function broadcastMessage(phoneNumbers, message, options = {}) {
   };
 
   // Validate phone numbers
-  const validNumbers = phoneNumbers.filter((num) => {
+  const validRecipients = normalized.filter((r) => {
+    const num = r.phone;
     if (!num || typeof num !== "string") {
       results.failedNumbers.push({ number: num, reason: "Invalid format" });
       results.failed++;
@@ -47,24 +66,24 @@ export async function broadcastMessage(phoneNumbers, message, options = {}) {
     return true;
   });
 
-  console.log(`[Broadcast] Starting broadcast to ${validNumbers.length} valid numbers (${results.failed} invalid)`);
+  console.log(`[Broadcast] Starting broadcast to ${validRecipients.length} valid numbers (${results.failed} invalid)`);
 
   // Process in batches
-  for (let i = 0; i < validNumbers.length; i += batchSize) {
-    const batch = validNumbers.slice(i, i + batchSize);
+  for (let i = 0; i < validRecipients.length; i += batchSize) {
+    const batch = validRecipients.slice(i, i + batchSize);
     const batchNumber = Math.floor(i / batchSize) + 1;
-    const totalBatches = Math.ceil(validNumbers.length / batchSize);
+    const totalBatches = Math.ceil(validRecipients.length / batchSize);
 
     console.log(`[Broadcast] Batch ${batchNumber}/${totalBatches} - Sending to ${batch.length} numbers`);
 
     // Send all in batch in parallel
-    const promises = batch.map((phoneNumber) =>
+    const promises = batch.map(({ phone: phoneNumber, name }) =>
       (async () => {
         try {
           if (templateName) {
             await sendTemplateMessage(phoneNumber, templateName, templateLanguage, components);
           } else {
-            await sendTextMessage(phoneNumber, message);
+            await sendTextMessage(phoneNumber, personalizeMessage(message, name));
           }
           results.totalSent++;
           results.logs.push({

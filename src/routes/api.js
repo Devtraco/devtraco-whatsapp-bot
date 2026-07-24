@@ -748,6 +748,88 @@ router.post("/broadcast/send", async (req, res) => {
 });
 
 /**
+ * GET /api/broadcast/leads-audience — Preview how many captured leads a broadcast would reach
+ * Optional query: ?tier=hot|warm|cold
+ */
+router.get("/broadcast/leads-audience", async (req, res) => {
+  try {
+    const recipients = await getLeadRecipients(req.query.tier);
+    res.json({ count: recipients.length, recipients });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/broadcast/send-leads — Send a broadcast to all captured lead contacts.
+ * Body: { message, title?, tier? }  (message supports {name} / {first_name} placeholders)
+ */
+router.post("/broadcast/send-leads", async (req, res) => {
+  try {
+    const { message, title, tier } = req.body || {};
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
+      return res.status(400).json({ error: "Provide a non-empty message" });
+    }
+
+    const recipients = await getLeadRecipients(tier);
+    if (recipients.length === 0) {
+      return res.status(400).json({ error: "No captured leads to send to" });
+    }
+
+    console.log(`[API] Broadcasting to ${recipients.length} captured leads${tier ? ` (tier: ${tier})` : ""}`);
+
+    const results = await broadcastMessage(recipients, message);
+    const durationSeconds = (results.endTime - results.startTime) / 1000;
+
+    const phoneNumbers = recipients.map((r) => r.phone);
+    try {
+      await saveBroadcastResult({
+        title: title || `Leads Broadcast - ${new Date().toLocaleString()}`,
+        message,
+        phoneNumbers,
+        ...results,
+        durationSeconds,
+        notes: tier ? `Audience: ${tier} leads` : "Audience: all captured leads",
+      });
+    } catch (saveErr) {
+      console.error("[API] Failed to save leads broadcast result:", saveErr.message);
+    }
+
+    res.status(202).json({ status: "broadcast_completed", audience: recipients.length, ...results, durationSeconds });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * Build the list of broadcast recipients from captured leads.
+ * Each recipient is { phone: "+<international>", name }.
+ */
+async function getLeadRecipients(tier = null) {
+  const sessions = await getAllSessions();
+  const wanted = tier ? String(tier).toLowerCase() : null;
+  const seen = new Set();
+  const recipients = [];
+
+  for (const s of sessions) {
+    // A "lead" is any contact we've captured (has some lead score / name)
+    if (!(s.leadScore > 0 || s.leadData?.name)) continue;
+    if (wanted && getLeadTier(s.leadScore) !== wanted) continue;
+
+    const raw = s.leadData?.phone || s.userId;
+    if (!raw) continue;
+    const digits = String(raw).replace(/\D/g, "");
+    if (digits.length < 8) continue; // skip clearly-invalid numbers
+    const phone = `+${digits}`;
+    if (seen.has(phone)) continue;
+    seen.add(phone);
+    recipients.push({ phone, name: s.leadData?.name || "" });
+  }
+
+  return recipients;
+}
+
+/**
  * POST /api/broadcast/upload-excel — Upload Excel file and send broadcast
  * Expects multipart form data with "file" and "message" fields
  * File must be .xlsx or .csv with phone numbers

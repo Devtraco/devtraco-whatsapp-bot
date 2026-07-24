@@ -90,6 +90,9 @@ export const api = {
     request(`/broadcast/drafts/${id}`, { method: "DELETE" }),
   broadcastResults: () => request("/broadcast/results"),
   broadcastStatus:  () => request("/broadcast/status"),
+  // Send a broadcast to captured leads (message supports {name} personalisation)
+  broadcastLeadsAudience: (tier) => request(`/broadcast/leads-audience${tier ? `?tier=${tier}` : ""}`),
+  sendToLeads: (data) => request("/broadcast/send-leads", { method: "POST", body: JSON.stringify(data) }),
 
   // CRM
   crmStats: () => request("/crm/stats"),
