@@ -30,6 +30,41 @@ async function request(path, options = {}) {
   return res.json();
 }
 
+/**
+ * Fetch a file-download endpoint (CSV/JSON export) with the auth header attached,
+ * then trigger a browser save using the filename the server sent back.
+ */
+async function downloadFile(path) {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: { Authorization: `Bearer ${token()}` },
+  });
+
+  if (res.status === 401) {
+    localStorage.removeItem("dt_token");
+    window.location.href = "/app/login";
+    throw new Error("Unauthorized");
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Export failed (${res.status})`);
+  }
+
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const filename = match ? match[1] : "export";
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   login: (username, password) =>
     fetch(`${BASE}/auth/login`, {
@@ -56,6 +91,8 @@ export const api = {
   conversation:        (id) => request(`/conversations/${id}`),
   deleteConversation:  (id) => request(`/conversations/${id}`, { method: "DELETE" }),
   deleteAllConversations: () => request("/conversations", { method: "DELETE" }),
+  exportConversation:        (id, format = "csv") => downloadFile(`/conversations/${id}/export-${format}`),
+  exportConversationsSummary: (query = "") => downloadFile(`/conversations/export-csv${query}`),
 
   // Properties
   properties:     () => request("/properties"),
