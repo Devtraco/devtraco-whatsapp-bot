@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Trash2, MessageSquare, X, Calendar } from "lucide-react";
+import { Search, Trash2, MessageSquare, X, Calendar, Download, FileJson } from "lucide-react";
 import { startOfDay, startOfWeek, startOfMonth, subDays, isAfter } from "date-fns";
 import { api } from "@/lib/api";
 import { fmtRelative, fmtPhone, truncate, avatarColor, initials } from "@/lib/utils";
@@ -85,6 +85,32 @@ export default function Conversations() {
     mutationFn: api.deleteConversation,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["conversations"] }); setSelected(null); },
   });
+
+  const exportMutation = useMutation({
+    mutationFn: ({ id, format }) => api.exportConversation(id, format),
+    onError: (e) => alert("Export failed: " + e.message),
+  });
+
+  const exportAllMutation = useMutation({
+    mutationFn: (query) => api.exportConversationsSummary(query),
+    onError: (e) => alert("Export failed: " + e.message),
+  });
+
+  // Build ?from=&to= for "Export all" from the currently selected date filter,
+  // so the export matches what's shown in the list.
+  const exportAllQuery = useMemo(() => {
+    const params = new URLSearchParams();
+    if (dateFilter === "custom") {
+      if (customFrom) params.set("from", new Date(customFrom).toISOString());
+      if (customTo) params.set("to", new Date(customTo + "T23:59:59").toISOString());
+    } else if (dateFilter !== "all") {
+      const bound = getDateBound(dateFilter);
+      if (bound) params.set("from", bound.toISOString());
+      if (dateFilter === "yesterday") params.set("to", startOfDay(new Date()).toISOString());
+    }
+    const qs = params.toString();
+    return qs ? `?${qs}` : "";
+  }, [dateFilter, customFrom, customTo]);
 
   const list = useMemo(() => {
     let items = data?.conversations || [];
@@ -201,7 +227,18 @@ export default function Conversations() {
               </div>
             )}
 
-            <p className="text-[10px] text-slate-400">{list.length} conversation{list.length !== 1 ? "s" : ""}</p>
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] text-slate-400">{list.length} conversation{list.length !== 1 ? "s" : ""}</p>
+              <button
+                onClick={() => exportAllMutation.mutate(exportAllQuery)}
+                disabled={exportAllMutation.isPending || list.length === 0}
+                title="Export all conversations in view as CSV"
+                className="flex items-center gap-1 text-[10px] font-medium text-slate-500 hover:text-brand-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <Download size={11} />
+                {exportAllMutation.isPending ? "Exporting…" : "Export all"}
+              </button>
+            </div>
           </div>
 
           {/* Conversation list */}
@@ -264,6 +301,22 @@ export default function Conversations() {
                   <Badge variant={stateBadgeVariant(selected.state)}>
                     {selected.state?.replace(/_/g, " ") || "—"}
                   </Badge>
+                  <button
+                    onClick={() => exportMutation.mutate({ id: selected.userId, format: "csv" })}
+                    disabled={exportMutation.isPending}
+                    title="Export this conversation as CSV"
+                    className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors disabled:opacity-40"
+                  >
+                    <Download size={15} />
+                  </button>
+                  <button
+                    onClick={() => exportMutation.mutate({ id: selected.userId, format: "json" })}
+                    disabled={exportMutation.isPending}
+                    title="Export this conversation as JSON"
+                    className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors disabled:opacity-40"
+                  >
+                    <FileJson size={15} />
+                  </button>
                   <button
                     onClick={() => { if (confirm("Delete this conversation?")) deleteMutation.mutate(selected.userId); }}
                     className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"

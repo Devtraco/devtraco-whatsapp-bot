@@ -22,6 +22,11 @@ import { getAllViewings, getPendingViewingCount, updateViewingStatus, formatView
 import { sendTextMessage } from "../services/whatsapp.js";
 import { broadcastMessage, parsePhoneNumbers, saveDraft, getAllDrafts, getDraft, updateDraft, deleteDraft, saveBroadcastResult, getBroadcastResults, getBroadcastResult, exportBroadcastResultAsCSV, exportBroadcastSummaryAsCSV } from "../services/broadcast.js";
 import { getCRMSyncStats, getCRMSyncLog, syncLeadToCRM } from "../services/crmSync.js";
+import {
+  exportConversationTranscriptCSV,
+  exportConversationJSON,
+  exportConversationsSummaryCSV,
+} from "../services/conversationExport.js";
 import { sendViewingConfirmationEmail, sendTestEmail } from "../services/email.js";
 import { invalidatePromptCache } from "../services/ai.js";
 import Image from "../db/models/Image.js";
@@ -213,6 +218,28 @@ router.get("/conversations", async (req, res) => {
 });
 
 /**
+ * GET /api/conversations/export-csv — Export a summary of ALL conversations as CSV
+ * Optional query: ?from=<ISO date>&to=<ISO date> to filter by last activity
+ * Must be registered before /conversations/:userId so "export-csv" isn't parsed as a userId.
+ */
+router.get("/conversations/export-csv", async (req, res) => {
+  let sessions = await getAllSessions();
+  const { from, to } = req.query;
+  if (from) {
+    const f = new Date(from).getTime();
+    if (!Number.isNaN(f)) sessions = sessions.filter((s) => (s.lastActivity || 0) >= f);
+  }
+  if (to) {
+    const t = new Date(to).getTime();
+    if (!Number.isNaN(t)) sessions = sessions.filter((s) => (s.lastActivity || 0) <= t);
+  }
+  const csv = exportConversationsSummaryCSV(sessions);
+  res.set("Content-Type", "text/csv; charset=utf-8");
+  res.set("Content-Disposition", `attachment; filename="conversations-summary-${new Date().toISOString().split("T")[0]}.csv"`);
+  res.send(csv);
+});
+
+/**
  * GET /api/conversations/:userId — Get conversation history
  */
 router.get("/conversations/:userId", async (req, res) => {
@@ -235,6 +262,34 @@ router.get("/conversations/:userId", async (req, res) => {
     firstContact: session.firstContact || session.lastActivity,
     lastActivity: session.lastActivity,
   });
+});
+
+/**
+ * GET /api/conversations/:userId/export-csv — Export one conversation's full transcript as CSV
+ */
+router.get("/conversations/:userId/export-csv", async (req, res) => {
+  const session = await getSessionReadOnly(req.params.userId);
+  if (!session) {
+    return res.status(404).json({ error: "Conversation not found" });
+  }
+  const csv = exportConversationTranscriptCSV(session);
+  res.set("Content-Type", "text/csv; charset=utf-8");
+  res.set("Content-Disposition", `attachment; filename="conversation-${req.params.userId}.csv"`);
+  res.send(csv);
+});
+
+/**
+ * GET /api/conversations/:userId/export-json — Export one conversation (transcript + lead data) as JSON
+ */
+router.get("/conversations/:userId/export-json", async (req, res) => {
+  const session = await getSessionReadOnly(req.params.userId);
+  if (!session) {
+    return res.status(404).json({ error: "Conversation not found" });
+  }
+  const json = exportConversationJSON(session);
+  res.set("Content-Type", "application/json; charset=utf-8");
+  res.set("Content-Disposition", `attachment; filename="conversation-${req.params.userId}.json"`);
+  res.send(JSON.stringify(json, null, 2));
 });
 
 /**
