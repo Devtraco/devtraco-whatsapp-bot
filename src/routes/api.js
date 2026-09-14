@@ -22,6 +22,7 @@ import { getAllViewings, getPendingViewingCount, updateViewingStatus, formatView
 import { sendTextMessage } from "../services/whatsapp.js";
 import { broadcastMessage, parsePhoneNumbers, saveDraft, getAllDrafts, getDraft, updateDraft, deleteDraft, saveBroadcastResult, getBroadcastResults, getBroadcastResult, exportBroadcastResultAsCSV, exportBroadcastSummaryAsCSV } from "../services/broadcast.js";
 import { getCRMSyncStats, getCRMSyncLog, syncLeadToCRM } from "../services/crmSync.js";
+import { syncPricesFromSheet, getLastPriceSyncResult, getPriceSyncLog } from "../services/priceSync.js";
 import {
   exportConversationTranscriptCSV,
   exportConversationJSON,
@@ -510,6 +511,28 @@ router.post("/email/test", async (req, res) => {
  */
 router.get("/crm/log", (req, res) => {
   res.json({ log: getCRMSyncLog() });
+});
+
+/**
+ * GET /api/price-sync/status — Result of the most recent price sheet sync
+ */
+router.get("/price-sync/status", (req, res) => {
+  res.json({ result: getLastPriceSyncResult() });
+});
+
+/**
+ * GET /api/price-sync/log — Recent price sheet sync runs (most recent first)
+ */
+router.get("/price-sync/log", (req, res) => {
+  res.json({ log: getPriceSyncLog() });
+});
+
+/**
+ * POST /api/price-sync/run — Trigger an immediate price sheet sync
+ */
+router.post("/price-sync/run", async (req, res) => {
+  const result = await syncPricesFromSheet();
+  res.json({ result });
 });
 
 /**

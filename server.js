@@ -6,6 +6,7 @@ import config from "./src/config/index.js";
 import { connectDB } from "./src/db/connection.js";
 import { seedProperties } from "./src/data/properties.js";
 import { startStatusScraper } from "./src/services/statusScraper.js";
+import { startPriceSyncScheduler } from "./src/services/priceSync.js";
 import { scheduleDailyReport } from "./src/services/dailyReport.js";
 import webhookRoutes from "./src/routes/webhook.js";
 import apiRoutes from "./src/routes/api.js";
@@ -98,6 +99,7 @@ async function start() {
   if (dbConnected) {
     await seedProperties();
     startStatusScraper();
+    startPriceSyncScheduler();
   }
 
   scheduleDailyReport();
