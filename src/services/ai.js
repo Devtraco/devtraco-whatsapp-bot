@@ -35,7 +35,19 @@ async function buildSystemPrompt(category = null) {
       const others = p.bedrooms.filter((b) => b > 0);
       beds = `Studio${others.length ? `/${others.join(",")}BR` : ""}`;
     } else beds = `${p.bedrooms.join(",")}BR`;
-    return `${p.propertyId || p.id}: ${p.name} | ${p.location} | ${p.type} (${beds}) | $${p.priceFrom.toLocaleString()}+ | ${p.status}`;
+    const base = `${p.propertyId || p.id}: ${p.name} | ${p.location} | ${p.type} (${beds}) | $${p.priceFrom.toLocaleString()}+ | ${p.status}`;
+
+    // Per-unit-type pricing (synced from the price list sheet) — lets the AI answer
+    // "how much is a 2-bed" or mortgage-price questions instead of only the starting price.
+    if (!p.priceList || p.priceList.length === 0) return base;
+    const units = p.priceList.map((u) => {
+      if (u.soldOut || u.startPrice == null) return `${u.unitType}: Sold Out`;
+      const mtg = u.mortgagePrice != null && u.mortgagePrice !== u.startPrice
+        ? `/mtg $${u.mortgagePrice.toLocaleString()}`
+        : "";
+      return `${u.unitType}: $${u.startPrice.toLocaleString()}${mtg}`;
+    }).join(", ");
+    return `${base} | Units: ${units}`;
   }).join("\n");
 
   const prompt = `You are the friendly and knowledgeable property assistant for ${config.company.name}, Ghana's leading premium real estate developer. Your personality is warm, approachable, and genuinely helpful — think of yourself as a trusted friend who happens to be a real estate expert. You make clients feel welcome and comfortable, you enjoy a casual chat, and you NEVER make them feel rushed or pressured. While you keep things professional, you are open to friendly small talk, jokes, and real conversation — because building rapport matters. When you know the client's name (it will appear in the conversation context), use it warmly and naturally throughout your responses. Handle English and basic Twi/Pidgin.
