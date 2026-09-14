@@ -418,11 +418,45 @@ export async function searchProperties({ location, type, minBudget, maxBudget, b
 
 // ───────── Admin CRUD ─────────
 
+/**
+ * Clean up a priceList coming from a form (strings, possibly-empty rows) into
+ * the shape the schema expects. Rows with no unit type are dropped.
+ */
+function normalizePriceList(input) {
+  if (!Array.isArray(input)) return [];
+  const toNum = (v) => {
+    if (v === "" || v === null || v === undefined) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  return input
+    .filter((u) => u && String(u.unitType || "").trim() !== "")
+    .map((u) => ({
+      unitType: String(u.unitType).trim(),
+      startPrice: u.soldOut ? null : toNum(u.startPrice),
+      mortgagePrice: u.soldOut ? null : toNum(u.mortgagePrice),
+      soldOut: !!u.soldOut,
+    }));
+}
+
+/**
+ * The "starting from" price is the cheapest available (non-sold-out) unit —
+ * same rule the price sheet sync uses. Returns null when every unit is sold
+ * out or the list is empty, so the caller can fall back to a manual price.
+ */
+function computePriceFromUnits(priceList) {
+  const available = (priceList || []).filter((u) => !u.soldOut && u.startPrice != null);
+  return available.length > 0 ? Math.min(...available.map((u) => u.startPrice)) : null;
+}
+
 export async function createProperty(data) {
   if (!isDBConnected()) throw new Error("Database not connected");
 
   // Generate ID from name if not provided
   const propertyId = data.propertyId || data.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+
+  const priceList = normalizePriceList(data.priceList);
+  const computed = computePriceFromUnits(priceList);
 
   const property = new PropertyModel({
     propertyId,
@@ -431,7 +465,7 @@ export async function createProperty(data) {
     type: data.type || "Apartments",
     category: data.category || "residential",
     bedrooms: parseBedrooms(data.bedrooms),
-    priceFrom: data.priceFrom || 0,
+    priceFrom: computed ?? (data.priceFrom || 0),
     currency: data.currency || "USD",
     amenities: data.amenities || [],
     status: data.status || "Now Selling",
@@ -439,6 +473,8 @@ export async function createProperty(data) {
     projectUrl: data.projectUrl || "",
     description: data.description || "",
     active: true,
+    priceList,
+    lastPriceSyncAt: priceList.length > 0 ? new Date() : null,
   });
 
   await property.save();
@@ -452,6 +488,18 @@ export async function updateProperty(propertyId, updates) {
   // Parse bedrooms if provided
   if (updates.bedrooms !== undefined) {
     updates.bedrooms = parseBedrooms(updates.bedrooms);
+  }
+
+  // When a priceList is being set from the dashboard (not the sheet sync, which
+  // sends an already-normalized list), clean it up and re-derive priceFrom from
+  // it — same rule as the sheet sync, so the two update paths never disagree.
+  if (updates.priceList !== undefined) {
+    updates.priceList = normalizePriceList(updates.priceList);
+    const computed = computePriceFromUnits(updates.priceList);
+    if (updates.priceList.length > 0) {
+      updates.lastPriceSyncAt = new Date();
+      if (computed != null) updates.priceFrom = computed;
+    }
   }
 
   const doc = await PropertyModel.findOneAndUpdate(
