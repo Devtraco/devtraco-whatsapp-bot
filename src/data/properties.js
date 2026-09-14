@@ -334,7 +334,10 @@ export async function seedProperties() {
         await PropertyModel.create(prop);
         created++;
       } else {
-        // Update fields that may have changed (images, location, amenities, description, etc.)
+        // Update fields that may have changed (images, location, amenities, description, etc.).
+        // priceFrom is deliberately excluded — it's kept live by the price sheet sync (or a
+        // manual dashboard edit) once that's run, and re-seeding it here on every restart would
+        // clobber that back to this hardcoded default until the next sync corrects it again.
         await PropertyModel.updateOne(
           { propertyId: prop.propertyId },
           {
@@ -344,7 +347,6 @@ export async function seedProperties() {
               type: prop.type,
               category: prop.category || "residential",
               bedrooms: prop.bedrooms,
-              priceFrom: prop.priceFrom,
               currency: prop.currency,
               amenities: prop.amenities,
               status: prop.status,
