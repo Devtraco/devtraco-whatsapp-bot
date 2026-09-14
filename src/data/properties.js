@@ -311,11 +311,13 @@ function docToProperty(doc) {
     projectUrl: doc.projectUrl || "",
     description: doc.description || "",
     active: doc.active !== false,
+    priceList: doc.priceList || [],
+    lastPriceSyncAt: doc.lastPriceSyncAt || null,
   };
 }
 
 function defaultToProperty(d) {
-  return { ...d, id: d.propertyId, active: true, category: d.category || "residential" };
+  return { ...d, id: d.propertyId, active: true, category: d.category || "residential", priceList: d.priceList || [], lastPriceSyncAt: null };
 }
 
 // ───────── Seed DB with defaults ─────────
@@ -472,6 +474,21 @@ export async function deleteProperty(propertyId) {
 
 // ───────── WhatsApp Formatting ─────────
 
+/**
+ * One line per unit type, e.g. "Studio — $109,426 (mortgage $115,426)" or
+ * "Penthouse — Sold Out". Omits the mortgage figure when it equals the cash price.
+ */
+function formatPriceListLines(priceList) {
+  return (priceList || []).map((u) => {
+    if (u.soldOut || u.startPrice == null) return `${u.unitType} — Sold Out`;
+    const start = `$${u.startPrice.toLocaleString()}`;
+    const mortgage = u.mortgagePrice != null && u.mortgagePrice !== u.startPrice
+      ? ` (mortgage $${u.mortgagePrice.toLocaleString()})`
+      : "";
+    return `${u.unitType} — ${start}${mortgage}`;
+  });
+}
+
 export function formatPropertyCard(property) {
   let beds;
   if (!property.bedrooms || property.bedrooms.length === 0) {
@@ -483,12 +500,15 @@ export function formatPropertyCard(property) {
     beds = `🛏️ ${property.bedrooms.join(", ")} bedroom`;
   }
 
+  const priceLines = formatPriceListLines(property.priceList);
+
   return [
     `🏠 *${property.name}*`,
     `📍 ${property.location}`,
     `${beds}`,
     `💰 From $${property.priceFrom.toLocaleString()}`,
     `📋 ${property.status}`,
+    priceLines.length > 0 ? `\n🏷️ *Unit prices:*\n${priceLines.map((l) => `• ${l}`).join("\n")}` : "",
     ``,
     property.description,
     property.projectUrl ? `\n🔗 Learn more: ${property.projectUrl}` : "",
@@ -513,11 +533,14 @@ export async function getPropertyContext() {
       beds = `${p.bedrooms.join(", ")} bedroom`;
     }
 
+    const priceLines = formatPriceListLines(p.priceList);
+
     return [
       `${i + 1}. *${p.name}* — ${p.location}`,
       `   - Type: ${p.type} (${beds})`,
       `   - Price: Starting from $${p.priceFrom.toLocaleString()}`,
       `   - Status: ${p.status}`,
+      priceLines.length > 0 ? `   - Price by unit type (cash / mortgage):\n${priceLines.map((l) => `     • ${l}`).join("\n")}` : "",
       p.description ? `   - ${p.description}` : "",
       p.projectUrl ? `   - Link: ${p.projectUrl}` : "",
     ].filter(Boolean).join("\n");

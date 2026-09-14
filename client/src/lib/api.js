@@ -137,4 +137,9 @@ export const api = {
   // CRM
   crmStats: () => request("/crm/stats"),
   crmLog:   () => request("/crm/log"),
+
+  // Price sheet sync
+  priceSyncStatus: () => request("/price-sync/status"),
+  priceSyncLog:    () => request("/price-sync/log"),
+  runPriceSync:    () => request("/price-sync/run", { method: "POST" }),
 };

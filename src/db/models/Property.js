@@ -1,5 +1,13 @@
 import mongoose from "mongoose";
 
+// One row of the price sheet — a unit type within a property (Studio, 1 Bed, Penthouse, ...)
+const priceUnitSchema = new mongoose.Schema({
+  unitType:      { type: String, required: true },
+  startPrice:    { type: Number, default: null },  // null when soldOut
+  mortgagePrice: { type: Number, default: null },  // null when soldOut
+  soldOut:       { type: Boolean, default: false },
+}, { _id: false });
+
 const propertySchema = new mongoose.Schema({
   propertyId: { type: String, required: true, unique: true, index: true },
   name:        { type: String, required: true },
@@ -16,6 +24,11 @@ const propertySchema = new mongoose.Schema({
   projectUrl:  String,
   description: String,
   active:      { type: Boolean, default: true },  // soft-delete toggle
+
+  // Per-unit-type pricing, kept in sync from the Devtraco price list Google Sheet.
+  // priceFrom above is auto-derived from this list's cheapest available unit when present.
+  priceList:       [priceUnitSchema],
+  lastPriceSyncAt: { type: Date, default: null },
 }, {
   timestamps: true,
 });
