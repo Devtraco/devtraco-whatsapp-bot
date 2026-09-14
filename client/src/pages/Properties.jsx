@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, ImageIcon, ExternalLink, Grid3X3, List, X, Check, Upload, Building2, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, ImageIcon, ExternalLink, Grid3X3, List, X, Check, Upload, Building2, Loader2, Tags } from "lucide-react";
 import { api } from "@/lib/api";
 import { fmtCurrency, cn } from "@/lib/utils";
 import { Badge, Button, Card, CardHeader, CardBody, Modal, Input, Select, Textarea, PageLoader, Empty, ErrorBanner } from "@/components/ui";
@@ -8,11 +8,13 @@ import { Badge, Button, Card, CardHeader, CardBody, Modal, Input, Select, Textar
 const STATUS_COLORS = { "Now Selling": "green", "Coming Soon": "amber", "Sold Out": "red" };
 const TYPES    = ["Apartments", "Hotel Apartments", "Townhouses", "Townhomes", "Land"];
 const STATUSES = ["Now Selling", "Coming Soon", "Sold Out"];
+const EMPTY_UNIT = { unitType: "", startPrice: "", mortgagePrice: "", soldOut: false };
 
 const EMPTY_FORM = {
   name: "", location: "", type: "", category: "residential",
   bedrooms: "", priceFrom: "", currency: "USD",
   status: "Now Selling", projectUrl: "", amenities: "", description: "",
+  priceList: [],
 };
 
 function toFormValues(p) {
@@ -28,7 +30,20 @@ function toFormValues(p) {
     projectUrl:  p.projectUrl  || "",
     amenities:   Array.isArray(p.amenities) ? p.amenities.join(", ") : (p.amenities || ""),
     description: p.description || "",
+    priceList: (p.priceList || []).map((u) => ({
+      unitType:      u.unitType || "",
+      startPrice:    u.startPrice != null ? String(u.startPrice) : "",
+      mortgagePrice: u.mortgagePrice != null ? String(u.mortgagePrice) : "",
+      soldOut:       !!u.soldOut,
+    })),
   };
+}
+
+/** Cheapest available (non-sold-out) unit — same rule the server uses to derive priceFrom. */
+function computeStartingPrice(priceList) {
+  const available = priceList.filter((u) => !u.soldOut && u.startPrice !== "" && !Number.isNaN(Number(u.startPrice)));
+  if (available.length === 0) return null;
+  return Math.min(...available.map((u) => Number(u.startPrice)));
 }
 
 function PropertyForm({ initial, editId, onSave, onCancel, loading, error }) {
@@ -36,6 +51,19 @@ function PropertyForm({ initial, editId, onSave, onCancel, loading, error }) {
   const [images, setImages] = useState([]);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const isLand = form.type === "Land";
+
+  const hasUnits = form.priceList.length > 0;
+  const computedStart = hasUnits ? computeStartingPrice(form.priceList) : null;
+
+  function setUnit(i, k, v) {
+    setForm((f) => ({ ...f, priceList: f.priceList.map((u, idx) => (idx === i ? { ...u, [k]: v } : u)) }));
+  }
+  function addUnit() {
+    setForm((f) => ({ ...f, priceList: [...f.priceList, { ...EMPTY_UNIT }] }));
+  }
+  function removeUnit(i) {
+    setForm((f) => ({ ...f, priceList: f.priceList.filter((_, idx) => idx !== i) }));
+  }
 
   function handleTypeChange(val) {
     set("type", val);
@@ -47,7 +75,8 @@ function PropertyForm({ initial, editId, onSave, onCancel, loading, error }) {
     e.preventDefault();
     onSave({
       ...form,
-      priceFrom: form.priceFrom !== "" ? Number(form.priceFrom) : 0,
+      priceFrom: hasUnits ? (computedStart ?? 0) : (form.priceFrom !== "" ? Number(form.priceFrom) : 0),
+      priceList: form.priceList.filter((u) => u.unitType.trim() !== ""),
       amenities: form.amenities ? form.amenities.split(",").map((a) => a.trim()).filter(Boolean) : [],
       bedrooms:  isLand ? [] : form.bedrooms,
     }, images, editId);
@@ -72,12 +101,13 @@ function PropertyForm({ initial, editId, onSave, onCancel, loading, error }) {
             placeholder="e.g. 0,1,2,3  (0 = studio)" />
         )}
         <Input
-          label={isLand ? "Starting Price (0 = On Request)" : "Starting Price (USD) *"}
+          label={hasUnits ? "Starting Price (auto-calculated below)" : isLand ? "Starting Price (0 = On Request)" : "Starting Price (USD) *"}
           type="number" min="0"
-          value={form.priceFrom}
+          value={hasUnits ? (computedStart ?? "") : form.priceFrom}
           onChange={(e) => set("priceFrom", e.target.value)}
-          placeholder="e.g. 150000"
-          required={!isLand}
+          placeholder={hasUnits ? "" : "e.g. 150000"}
+          required={!isLand && !hasUnits}
+          disabled={hasUnits}
         />
         <Select label="Currency" value={form.currency} onChange={(e) => set("currency", e.target.value)}>
           <option value="USD">USD — US Dollar</option>
@@ -94,6 +124,52 @@ function PropertyForm({ initial, editId, onSave, onCancel, loading, error }) {
         placeholder="Swimming Pool, Gym, 24/7 Security, Concierge" rows={2} />
       <Textarea label="Description" value={form.description} onChange={(e) => set("description", e.target.value)}
         placeholder="Brief property description for the AI chatbot…" rows={3} />
+
+      {/* Per-unit-type pricing — same shape the price sheet sync fills in; editing here overrides it */}
+      <div className="space-y-2 border border-slate-200 rounded-xl p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Tags size={14} className="text-brand-600" />
+            <p className="text-xs font-semibold text-slate-700">Unit Prices <span className="text-slate-400 font-normal">(optional)</span></p>
+          </div>
+          <Button type="button" variant="secondary" size="sm" icon={Plus} onClick={addUnit}>Add Unit Type</Button>
+        </div>
+
+        {!hasUnits ? (
+          <p className="text-xs text-slate-400">
+            No unit-level pricing yet — the single Starting Price above is used. Add unit types (Studio, 1 Bed, Penthouse, …) to give the bot exact per-unit and mortgage prices, or let the price sheet sync fill this in automatically.
+          </p>
+        ) : (
+          <>
+            <div className="space-y-2">
+              {form.priceList.map((u, i) => (
+                <div key={i} className="grid grid-cols-[1.4fr_1fr_1fr_auto_auto] gap-2 items-center">
+                  <Input placeholder="Unit type (e.g. Studio)" value={u.unitType} onChange={(e) => setUnit(i, "unitType", e.target.value)} />
+                  <Input type="number" min="0" placeholder="Start price" value={u.startPrice}
+                    onChange={(e) => setUnit(i, "startPrice", e.target.value)} disabled={u.soldOut} />
+                  <Input type="number" min="0" placeholder="Mortgage price" value={u.mortgagePrice}
+                    onChange={(e) => setUnit(i, "mortgagePrice", e.target.value)} disabled={u.soldOut} />
+                  <label className="flex items-center gap-1.5 text-xs text-slate-500 whitespace-nowrap">
+                    <input type="checkbox" checked={u.soldOut} onChange={(e) => setUnit(i, "soldOut", e.target.checked)} />
+                    Sold Out
+                  </label>
+                  <button type="button" onClick={() => removeUnit(i)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500 pt-1">
+              Starting price will show as{" "}
+              <span className="font-semibold text-brand-600">
+                {computedStart != null ? `$${computedStart.toLocaleString()}` : "— (all units sold out)"}
+              </span>{" "}
+              — the cheapest available unit above.
+            </p>
+          </>
+        )}
+      </div>
+
       <div className="space-y-1.5">
         <label className="block text-xs font-medium text-slate-600">Images (max 5 · up to 5 MB each)</label>
         <div className="border-2 border-dashed border-slate-200 rounded-xl p-5 text-center cursor-pointer hover:border-brand-400 hover:bg-brand-50/30 transition-all"
@@ -340,7 +416,14 @@ export default function Properties() {
                   <p className="font-semibold text-slate-900 truncate">{p.name}</p>
                   <p className="text-xs text-slate-400 truncate mt-0.5">{p.location}</p>
                   <div className="flex items-center justify-between mt-2 mb-3">
-                    <p className="text-sm font-bold text-brand-600">{fmtCurrency(p.priceFrom, p.currency)}</p>
+                    <p className="text-sm font-bold text-brand-600">
+                      {fmtCurrency(p.priceFrom, p.currency)}
+                      {p.priceList?.length > 0 && (
+                        <span className="ml-1.5 text-[10px] font-medium text-slate-400 align-middle">
+                          ({p.priceList.length} unit{p.priceList.length !== 1 ? "s" : ""})
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-slate-400">{p.type}</p>
                   </div>
                   {p.bedrooms?.length > 0 && (
@@ -406,7 +489,12 @@ export default function Properties() {
                       </td>
                       <td className="px-4 py-3 text-slate-500 text-xs">{p.location}</td>
                       <td className="px-4 py-3 text-slate-500 text-xs">{p.type}</td>
-                      <td className="px-4 py-3 font-semibold text-brand-600">{fmtCurrency(p.priceFrom, p.currency)}</td>
+                      <td className="px-4 py-3 font-semibold text-brand-600">
+                        {fmtCurrency(p.priceFrom, p.currency)}
+                        {p.priceList?.length > 0 && (
+                          <span className="ml-1.5 text-[10px] font-medium text-slate-400">({p.priceList.length} units)</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3"><Badge variant={STATUS_COLORS[p.status] || "default"}>{p.status}</Badge></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
